@@ -2,10 +2,10 @@
 
 **Wallet-native community chat: encrypted 1:1 DMs, token-gated rooms, and portable org spaces across web, macOS, and iOS (Tauri 2).**
 
-🌐 **Live preview:** [chat.bittrees.org](https://chat.bittrees.org)
+🌐 **Chat:** [chat.bittrees.org](https://chat.bittrees.org)
 
-Chat is the new product name. The move to `chat.bittrees.org` is being prepared;
-existing URLs and internal compatibility identifiers remain in use during the transition.
+Chat is the product name and the repository lives at [Bittrees-Technology/chat](https://github.com/Bittrees-Technology/chat).
+Existing installations and saved data continue to use their established identifiers. The legacy `chirpy.bittrees.org` origin still serves existing browser installations.
 
 Chat is an **org-agnostic** chat client for communities that organize around wallets.
 You start in a personal space, then **import** an existing organization's config or
