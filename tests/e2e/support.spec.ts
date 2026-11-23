@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 
 for (const [slug, heading, href] of [
-  ['support', 'Chat support', 'https://github.com/Bittrees-Technology/chirpy/issues/new?template=bug.yml'],
-  ['security', 'Report a Chat vulnerability', 'https://github.com/Bittrees-Technology/chirpy/security/advisories/new'],
+  ['support', 'Chat support', 'https://github.com/Bittrees-Technology/chat/issues/new?template=bug.yml'],
+  ['security', 'Report a Chat vulnerability', 'https://github.com/Bittrees-Technology/chat/security/advisories/new'],
 ]) {
   test(`${slug} page exposes a usable reporting channel`, async ({ page }) => {
     await page.goto(`/${slug}.html`);
@@ -16,8 +16,8 @@ for (const [slug, heading, href] of [
 }
 
 for (const [slug, heading, href] of [
-  ['support', 'Ayuda de Chat', 'https://github.com/Bittrees-Technology/chirpy/issues/new?template=bug.yml'],
-  ['security', 'Informar de una vulnerabilidad de Chat', 'https://github.com/Bittrees-Technology/chirpy/security/advisories/new'],
+  ['support', 'Ayuda de Chat', 'https://github.com/Bittrees-Technology/chat/issues/new?template=bug.yml'],
+  ['security', 'Informar de una vulnerabilidad de Chat', 'https://github.com/Bittrees-Technology/chat/security/advisories/new'],
 ]) {
   test(`${slug} offers Spanish reporting instructions on mobile`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
