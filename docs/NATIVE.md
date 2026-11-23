@@ -1,12 +1,12 @@
 # Native builds — macOS & iOS (Tauri 2)
 
-Chirpy uses **Tauri 2**: the same Vite + React frontend is loaded into a native webview
+Chat uses **Tauri 2**: the same Vite + React frontend is loaded into a native webview
 on every platform. There is no separate native UI codebase — `apps/web/src` is the app,
 and `apps/web/src-tauri` is the thin native shell.
 
 ## Why Tauri (not React Native)
 
-Chirpy's chat is browser code — `@xmtp/browser-sdk`, `viem`, and WalletConnect v2. Tauri runs
+Chat's interface uses browser code — `@xmtp/browser-sdk`, `viem`, and WalletConnect v2. Tauri runs
 that exact web frontend inside a native window/app, so Mac + iOS reuse it verbatim. React
 Native would require swapping to a different XMTP SDK and rebuilding the UI — a rewrite. If we
 ever want true-native widgets we can revisit, but Tauri is the lowest-risk path.
@@ -29,7 +29,7 @@ source "$HOME/.cargo/env"
 
 ```bash
 pnpm tauri dev      # hot-reload dev window (runs `pnpm dev` for the frontend)
-pnpm tauri build    # → apps/web/src-tauri/target/release/bundle/macos/Chirpy.app  (+ .dmg)
+pnpm tauri build    # → apps/web/src-tauri/target/release/bundle/macos/Chat.app  (+ .dmg)
 ```
 
 The first build compiles the Tauri/Rust dependency graph and takes several minutes;
@@ -55,7 +55,7 @@ The real transport relies on browser primitives inside WKWebView:
 - **OPFS / IndexedDB** — XMTP's local message store. Verify OPFS availability on the target
   iOS version early; fall back to IndexedDB if needed.
 - **WalletConnect / deep links** — mobile wallet connection uses WalletConnect v2; register
-  the app's URL scheme so wallet round-trips return to Chirpy.
+  the app's existing URL scheme so wallet round-trips return to Chat.
 
 These matter when building with `VITE_TRANSPORT=xmtp`; verify them on-device early.
 
@@ -65,7 +65,7 @@ The desktop app self-updates via the Tauri **updater** plugin: on launch (and fr
 **Settings → Software update**) it fetches a signed `latest.json`, and shows update availability. Installation and restart require explicit actions in Settings.
 
 - **Manifest endpoint** (`tauri.conf.json` → `plugins.updater.endpoints`):
-  `https://github.com/Bittrees-Technology/chirpy/releases/latest/download/latest.json`
+  `https://github.com/Bittrees-Technology/chat/releases/latest/download/latest.json`
 - **Signature:** every build is signed with an ed25519 key. The **public** key is in
   `tauri.conf.json`; the **private** key is **never committed** (gitignored under
   `src-tauri/.tauri/`). Updates with a bad/missing signature are rejected.

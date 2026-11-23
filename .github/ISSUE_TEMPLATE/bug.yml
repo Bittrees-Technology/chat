@@ -4,7 +4,7 @@ title: "[Bug] "
 body:
   - type: markdown
     attributes:
-      value: "For vulnerabilities use private reporting: https://github.com/Bittrees-Technology/chirpy/security/advisories/new. Do not include credentials, signatures, seed phrases, or private messages."
+      value: "For vulnerabilities use private reporting: https://github.com/Bittrees-Technology/chat/security/advisories/new. Do not include credentials, signatures, seed phrases, or private messages."
   - type: input
     id: version
     attributes:
