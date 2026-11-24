@@ -110,3 +110,14 @@ To support native Chirpy clients, explicitly set `GATE_NATIVE_ORIGINS=tauri://lo
 `GET /health` returns 200 only after valid configuration, a nonempty reviewed registry, a fresh mainnet RPC response and live XMTP/super-admin checks pass. Its `dependencies` object reports RPC/XMTP status, check time, in-flight state and registry fingerprint. Results expire after two minutes, and registry changes invalidate previous evidence. A dev gate reports `network: dev` and cannot satisfy production release validation.
 
 Probes start automatically, run again 60 seconds after completion, and share the native work queue while yielding between rooms. Monitor repeated 503 responses and `gate.dependencies` log transitions with your hosting provider's alert delivery. Measure probe duration and admission latency for your real room count before release. A missing host, missing configuration or failed dependency must not be bypassed by disabling the health check.
+
+
+### Disabled systemd installation
+
+The reviewed Linux first-install profile is `install-isolated-gate.py`, with the unit in `systemd/system/bittrees-chat-gate.service`. Use an independently pinned administrator launcher and bundle SHA-256 from the release record; do not execute a mutable checkout as root. The bundle must include the exact Git commit/tree, an independently verified Linux Node runtime, matching package/lock files and a complete file-hash manifest. Dependencies may be reused only after lockfile and installed-content verification.
+
+The installer copies and hashes a private snapshot, rejects archive traversal/links/devices and unexpected existing accounts/paths/unit policies, and retains at least 2 GiB free on the protected filesystem. It installs root-owned code in `/opt/bittrees-chat-gate`, root-controlled blank configuration in `/etc/bittrees-chat-gate`, and empty service-owned state in `/var/lib/bittrees-chat-gate`. It creates no signing identity, registry or activation marker and does not start/enable the service. Keep encrypted recovery on separately selected storage; never put executable code beneath an unprotected writable ancestor to bypass capacity limits.
+
+Immediately verify the disabled installation with `verify-isolated-gate.py`, supplying the separately reviewed `--commit`, `--tree`, `--bundle-sha256` and `--node-sha256`. This verifies provenance, all file contents/ownership/modes, empty state, absence of activation and inactive/disabled systemd state without executing Node or opening a messaging client. It is a first-install check and deliberately rejects later configured/active state. Preserve partial or uncertain results; do not reinstall or remove an account/lock to make a retry pass.
+
+Configuration, messaging registration, registered-store recovery, room authority, TLS ingress and actual qualifying/denied admission remain separate reviewed activation requirements. The installation receipt alone establishes none of them.
