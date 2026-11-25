@@ -1,3 +1,4 @@
+import { openSettingsGroup } from './fixtures/settings';
 import { test, expect, injectSyntheticWallet } from './fixtures/wallet';
 import type { Page, BrowserContext, Route } from '@playwright/test';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
@@ -56,7 +57,7 @@ test('two devices preserve deletion and unblock through an offline edit, then re
   const one=await a.newPage(),two=await b.newPage();await one.clock.install();await two.clock.install();await connect(one);await enable(one);
   await connect(two);await enable(two,'remote');expect((await stored(one,wallet.address)).syncMinimum).toBe(2);expect((await stored(two,wallet.address)).syncMinimum).toBe(2);
   offlineB=true;
-  one.once('dialog',dialog=>dialog.accept());await one.getByRole('button',{name:'Delete saved item',exact:true}).click();
+  one.once('dialog',dialog=>dialog.accept());await openSettingsGroup(one, 'data');await one.getByRole('button',{name:'Delete saved item',exact:true}).click();
   await one.getByText('Legacy blocked-address preferences',{exact:true}).click();await one.getByRole('button',{name:'Remove old preference',exact:true}).click();await one.clock.runFor(2000);
   await expect.poll(async()=>{const data=await decryptSyncPayloadV2(JSON.parse(server.state.blob!),key,wallet.address);return data.savedMessages['legacy-item'].value===null&&data.blocked[peer].value===false;}).toBe(true);
   const before=server.state.writes;await two.getByRole('switch',{name:'Read receipts default',exact:true}).click();await two.clock.runFor(2000);
@@ -92,7 +93,7 @@ test('an old local copy requires a preference choice and cannot resurrect a remo
  const a=await browser.newContext(),b=await browser.newContext();try {
   await injectSyntheticWallet(a,secret);await injectSyntheticWallet(b,secret);await a.route('**/api/usersync**',server.route);await b.route('**/api/usersync**',server.route);
   const one=await a.newPage();await one.clock.install();await connect(one);await enable(one);
-  one.once('dialog',dialog=>dialog.accept());await one.getByRole('button',{name:'Delete saved item',exact:true}).click();await one.clock.runFor(2000);
+  one.once('dialog',dialog=>dialog.accept());await openSettingsGroup(one, 'data');await one.getByRole('button',{name:'Delete saved item',exact:true}).click();await one.clock.runFor(2000);
   await expect.poll(async()=>(await decryptSyncPayloadV2(JSON.parse(server.state.blob!),key,wallet.address)).savedMessages['legacy-item'].value).toBeNull();
   const two=await b.newPage();await connect(two);await two.getByRole('switch',{name:'Read receipts default',exact:true}).click();
   const blobKey=`chat:settingsSyncBlob:v1:wallet:${wallet.address.toLowerCase()}`;await two.evaluate(({key,old})=>localStorage.setItem(key,old),{key:blobKey,old});

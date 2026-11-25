@@ -1,3 +1,4 @@
+import { openSettingsGroup } from './fixtures/settings';
 import { test, expect, injectSyntheticWallet } from './fixtures/wallet';
 import type { Page } from '@playwright/test';
 import { generatePrivateKey } from 'viem/accounts';
@@ -52,6 +53,7 @@ test('persists contacts and notes, composes with private labels, and exports bot
   await page.screenshot({ path: testInfo.outputPath('local-notes-mobile.png') });
   await close(page); await page.setViewportSize({ width: 1280, height: 720 });
   await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await openSettingsGroup(page, 'data');
   const password = 'local data export password';
   await page.getByLabel('Recovery passphrase', { exact: true }).fill(password);
   await page.getByLabel('Confirm recovery passphrase', { exact: true }).fill(password);
