@@ -73,6 +73,7 @@ test.describe('Linked public display identity @xmtp', () => {
       await publish(c,'');
       expect(choices.get(linkedWallet)?.inboxId).toBe(choices.get(ownerWallet.toLowerCase())?.inboxId);
       await a.locator('.nav-item',{hasText:'Settings'}).click();
+      await a.getByText('Public name and linked wallets',{exact:true}).click();
       await b.evaluate(()=>window.dispatchEvent(new Event('chat:display-wallet-changed')));
       await expect(author).toHaveAttribute('title',ownerWallet.toLowerCase(),{timeout:120_000});
       await publish(a,linkedWallet); await b.evaluate(()=>window.dispatchEvent(new Event('chat:display-wallet-changed')));
@@ -95,6 +96,7 @@ async function enable(page: Page, wallet: string) {
   await page.goto('/'); await page.locator('.nav-item',{hasText:'Settings'}).click(); await page.getByRole('button',{name:'Connect wallet',exact:true}).click();
   await expect(page.getByRole('textbox',{name:'Address',exact:true})).toHaveValue(wallet);
   await page.getByRole('button',{name:'Enable messaging',exact:true}).click(); await expect(page.getByText('Messaging enabled on this device.')).toBeVisible({timeout:120_000});
+  await page.getByText('Public name and linked wallets',{exact:true}).click();
   await expect(page.getByRole('button',{name:'Reload display choice',exact:true})).toBeEnabled({timeout:120_000});
 }
 async function publish(page: Page, wallet: string) {

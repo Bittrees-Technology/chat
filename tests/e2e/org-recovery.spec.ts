@@ -1,3 +1,4 @@
+import { openSettingsGroup } from './fixtures/settings';
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { createOrg } from '../../packages/core/src/org';
@@ -25,6 +26,7 @@ test('recovers mixed saved organizations, downloads originals, and validates new
   await page.reload();
   await page.locator('.nav-item', { hasText: 'Settings' }).click();
   await expect(page.getByRole('heading', { name: 'Organization recovery', exact: true })).toBeVisible();
+  await openSettingsGroup(page, 'organizations');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Create organization' });
   await dialog.getByRole('textbox', { name: 'Name', exact: true }).fill('New valid organization');

@@ -1,3 +1,4 @@
+import { openSettingsGroup } from './fixtures/settings';
 import { expect, test } from './fixtures/wallet';
 import { recoverMessageAddress, keccak256, stringToHex } from 'viem';
 import { syncGrantMessage, syncWriteMessage, syncRevokeDeviceMessage, syncRevokeAllMessage } from '../../packages/core/src/syncAuth';
@@ -38,6 +39,7 @@ test('encrypted sync signs scoped device writes and exposes confirmed revocation
   await page.getByRole('button', { name: 'Turn off', exact: true }).click();
   await expect(page.getByText('Sync is off and this device authorization was revoked.')).toBeVisible();
   expect(revoked).toBe(true);
+  await openSettingsGroup(page, 'data');
   await page.getByRole('button', { name: 'Revoke all sync devices', exact: true }).click();
   await expect(page.getByText('All existing sync device authorizations were revoked. Your encrypted saved data is retained.')).toBeVisible();
   expect(epoch).toBe(1); expect(record.blob).not.toBeNull();

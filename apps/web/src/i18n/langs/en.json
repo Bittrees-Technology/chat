@@ -949,5 +949,20 @@
   "settings.startupDevice": "Local device ID:",
   "settings.startupInbox": "Local inbox ID:",
   "settings.networkInbox": "Registered inbox ID:",
-  "settings.resumeUnavailable": "The saved messaging session could not be reopened. Existing device registrations were kept."
+  "settings.resumeUnavailable": "The saved messaging session could not be reopened. Existing device registrations were kept.",
+  "settings.groups.profile.title": "Profile",
+  "settings.groups.profile.help": "Your account and how you appear in Chat.",
+  "settings.groups.preferences.title": "Preferences",
+  "settings.groups.preferences.help": "Language, optional sections and privacy choices.",
+  "settings.groups.messaging.title": "Messaging",
+  "settings.groups.messaging.help": "Connection status, devices and message history.",
+  "settings.groups.data.title": "Data & recovery",
+  "settings.groups.data.help": "Encrypted backups, restore and sync security.",
+  "settings.groups.organizations.title": "Organizations",
+  "settings.groups.organizations.help": "Manage workspaces, roles and organization files.",
+  "settings.navigation": "Settings sections",
+  "settings.publicIdentity": "Public name and linked wallets",
+  "settings.technicalDetails": "Technical details and address lookup",
+  "settings.administrationLink": "Project administration and roles",
+  "settings.connection": "Connection"
 }
