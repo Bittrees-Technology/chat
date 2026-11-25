@@ -1,3 +1,4 @@
+import { openSettingsGroup } from './fixtures/settings';
 import { expect, test } from './fixtures/wallet';
 
 test('Spanish settings retain language, explain privacy controls and localize sync results', async ({ page, walletAddress }, testInfo) => {
@@ -22,12 +23,14 @@ test('Spanish settings retain language, explain privacy controls and localize sy
   await expect(page.getByRole('status')).toContainText('La sincronización cifrada está activada durante esta sesión del navegador');
   await page.getByRole('button', { name: 'Desactivar', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('se ha revocado la autorización de este dispositivo');
+  await page.getByText('Detalles técnicos y consulta de direcciones', { exact: true }).click();
   await page.getByPlaceholder('nombre.eth o dirección 0x').fill('invalid');
   await expect(page.getByText('Introduce un nombre .eth o una dirección 0x.', { exact: true })).toBeVisible();
   await page.reload();
   await page.locator('.nav-item', { hasText: 'Ajustes' }).click();
   await expect(page.getByRole('combobox', { name: 'Idioma', exact: true })).toHaveValue('es');
   await page.setViewportSize({ width: 390, height: 844 });
+  await openSettingsGroup(page, 'data');
   await expect(page.getByRole('button', { name: 'Revocar todos los dispositivos sincronizados' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('heading', { name: 'Ajustes', exact: true }).scrollIntoViewIfNeeded();

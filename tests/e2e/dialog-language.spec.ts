@@ -1,3 +1,4 @@
+import { openSettingsGroup } from './fixtures/settings';
 import { expect, test } from './fixtures/wallet';
 
 test('Spanish dialogs create chats, edit labeled gate rules and recover from import errors', async ({ page, walletAddress }, testInfo) => {
@@ -40,6 +41,7 @@ test('Spanish dialogs create chats, edit labeled gate rules and recover from imp
   await expect(page.locator('.thread-sub')).toContainText('1 miembro · abierta · solo lectura');
   await expect(page.getByRole('navigation', { name: 'Principal' })).toBeVisible();
   await page.getByRole('button', { name: /Ajustes/ }).click();
+  await openSettingsGroup(page, 'organizations');
   await page.getByRole('button', { name: 'Importar', exact: true }).click();
   const importer = page.getByRole('dialog', { name: 'Importar organización' });
   await importer.getByRole('textbox').fill('{malformed');

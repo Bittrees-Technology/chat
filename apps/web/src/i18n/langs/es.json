@@ -949,5 +949,20 @@
   "settings.startupDevice": "Identificador de dispositivo local:",
   "settings.startupInbox": "Identificador de bandeja local:",
   "settings.networkInbox": "Identificador de bandeja registrada:",
-  "settings.resumeUnavailable": "No se pudo reabrir la sesión de mensajería guardada. Se han conservado los dispositivos registrados."
+  "settings.resumeUnavailable": "No se pudo reabrir la sesión de mensajería guardada. Se han conservado los dispositivos registrados.",
+  "settings.groups.profile.title": "Perfil",
+  "settings.groups.profile.help": "Tu cuenta y cómo apareces en Chat.",
+  "settings.groups.preferences.title": "Preferencias",
+  "settings.groups.preferences.help": "Idioma, secciones opcionales y privacidad.",
+  "settings.groups.messaging.title": "Mensajería",
+  "settings.groups.messaging.help": "Conexión, dispositivos e historial de mensajes.",
+  "settings.groups.data.title": "Datos y recuperación",
+  "settings.groups.data.help": "Copias cifradas, restauración y seguridad de sincronización.",
+  "settings.groups.organizations.title": "Organizaciones",
+  "settings.groups.organizations.help": "Gestiona espacios, roles y archivos de organización.",
+  "settings.navigation": "Secciones de ajustes",
+  "settings.publicIdentity": "Nombre público y carteras vinculadas",
+  "settings.technicalDetails": "Detalles técnicos y consulta de direcciones",
+  "settings.administrationLink": "Administración del proyecto y roles",
+  "settings.connection": "Conexión"
 }

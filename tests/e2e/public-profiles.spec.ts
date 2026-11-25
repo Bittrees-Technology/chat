@@ -18,6 +18,7 @@ test('publishes an explicitly approved name to another member and withdraws it w
   });
   const a=await owner.newPage(),b=await recipient.newPage();
   for(const page of [a,b]){await page.goto('/');await dismissAnalyticsConsent(page);await page.locator('.nav-item',{hasText:'Settings'}).click();await page.getByRole('button',{name:'Connect wallet',exact:true}).click();}
+  await a.getByText('Public name and linked wallets',{exact:true}).click();
   const editor=a.getByRole('region',{name:'Public profile',exact:true});await editor.getByLabel('What to display in Chat').selectOption('name');await editor.getByLabel('Public display name',{exact:true}).fill('Member <not markup> '+ 'x'.repeat(60));
   await expect(editor.getByRole('button',{name:'Sign and publish name'})).toBeDisabled();expect(writes).toBe(0);
   await editor.getByLabel('I want this name and my wallet address to be public.').check();await editor.getByRole('button',{name:'Sign and publish name'}).click();await expect(editor.getByRole('status')).toContainText('Public name saved');expect(writes).toBe(1);

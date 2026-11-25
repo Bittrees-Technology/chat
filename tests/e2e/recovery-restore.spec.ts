@@ -1,3 +1,4 @@
+import { openSettingsGroup } from './fixtures/settings';
 import { test, expect, injectSyntheticWallet } from './fixtures/wallet';
 import type { Page } from '@playwright/test';
 import { generatePrivateKey } from 'viem/accounts';
@@ -16,6 +17,7 @@ async function connect(page: Page) {
   await page.getByRole('button', { name: 'Disconnect', exact: true }).waitFor();
 }
 async function upload(page: Page, data: RecoveryData, pass = password) {
+  await openSettingsGroup(page, 'data');
   const raw = await encryptRecoveryArchive(data, password);
   await page.getByLabel('Encrypted recovery file', { exact: true }).setInputFiles({ name: 'recovery.json', mimeType: 'application/json', buffer: Buffer.from(raw) });
   await page.getByLabel('Restore passphrase', { exact: true }).fill(pass);
@@ -67,7 +69,7 @@ test('restores reviewed data without inferring receipt consent, retains a backup
   expect(after.data.notes).toEqual(archive(walletAddress).notes); expect(after.journal.phase).toBe('applied');
   expect(after.marker).toBeNull(); expect(after.journal.before.contacts).toEqual([]);
   expect(JSON.parse(after.prefs)).toMatchObject({ readReceiptsDefault: false, syncAcrossDevices: false, blocked: [] });
-  await page.reload(); await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await page.reload(); await page.locator('.nav-item', { hasText: 'Settings' }).click(); await openSettingsGroup(page, 'data');
   page.once('dialog', dialog => dialog.accept()); await page.getByRole('button', { name: 'Undo restore', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Restore undone.' })).toBeVisible();
   const undone = await records(page, walletAddress);
@@ -82,7 +84,7 @@ test('keeps conflicts by default, applies explicit replacements and exports the 
   await seed(page, walletAddress, [originalContact], [originalNote]);
   await review(page, archive(walletAddress));
   await expect(page.getByRole('button', { name: 'Apply reviewed changes', exact: true })).toBeDisabled();
-  await page.locator('details').filter({ has: page.locator('summary', { hasText: peer }) }).locator('summary').first().click();
+  await page.locator('details > summary').filter({ hasText: peer }).click();
   await page.getByRole('checkbox', { name: 'Replace this existing value', exact: true }).check();
   await page.getByRole('checkbox', { name: /Apply receipt preferences/ }).check();
   await page.getByRole('checkbox', { name: /Add legacy blocked/ }).check();
@@ -122,7 +124,7 @@ for (const failure of ['preferences', 'finalize']) test(`resumes after ${failure
   await expect(page.getByRole('alert').filter({ hasText: 'An unfinished restore' })).toBeVisible();
   await expect(page.getByRole('status').filter({ hasText: 'Reviewed changes saved.' })).toHaveCount(0);
   const pending = await records(page, walletAddress); expect(pending.journal.phase).toBe('prepared'); expect(pending.marker).not.toBeNull();
-  await page.reload(); await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await page.reload(); await page.locator('.nav-item', { hasText: 'Settings' }).click(); await openSettingsGroup(page, 'data');
   await page.getByRole('button', { name: 'Resume unfinished restore', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Reviewed changes saved.' })).toBeVisible();
   const finished = await records(page, walletAddress); expect(finished.data.notes).toHaveLength(1);
@@ -207,7 +209,7 @@ test('resumes an interrupted undo without deleting later data or repeating revis
   page.once('dialog', dialog => dialog.accept()); await page.getByRole('button', { name: 'Undo restore', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'An unfinished restore' })).toBeVisible();
   const partial = await records(page, walletAddress); expect(partial.journal.phase).toBe('undoing');
-  await page.reload(); await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await page.reload(); await page.locator('.nav-item', { hasText: 'Settings' }).click(); await openSettingsGroup(page, 'data');
   page.once('dialog', dialog => dialog.accept()); await page.getByRole('button', { name: 'Resume unfinished restore' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Restore undone.' })).toBeVisible();
   const final = await records(page, walletAddress); expect(final.journal.phase).toBe('undone');
@@ -312,7 +314,7 @@ test('resumes failed name storage and prevents edits while restoration is pendin
   await page.getByRole('button',{name:'Apply reviewed changes'}).click();
   await expect(page.getByRole('alert').filter({hasText:'An unfinished restore'})).toBeVisible();
   const partial=await records(page,walletAddress);expect(partial.journal.phase).toBe('prepared');
-  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();
+  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();await openSettingsGroup(page, 'data');
   await page.getByLabel('Display name',{exact:true}).fill('Cannot replace pending name');
   await expect(page.getByText('Your display name could not be saved.',{exact:false})).toBeVisible();
   expect(await page.evaluate(key=>localStorage.getItem(key),profileKey(walletAddress))).toBe('"Original"');
@@ -342,7 +344,7 @@ for (const original of [null, '']) test(`resumes name undo to original ${JSON.st
   page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Undo restore'}).click();
   await expect(page.getByRole('alert').filter({hasText:'An unfinished restore'})).toBeVisible();
   const pending=await records(page,walletAddress);expect(pending.journal.phase).toBe('undoing');
-  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();
+  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();await openSettingsGroup(page, 'data');
   page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Resume unfinished restore'}).click();
   await expect(page.getByRole('status').filter({hasText:'Restore undone.'})).toBeVisible();
   expect(await page.evaluate(key=>localStorage.getItem(key),profileKey(walletAddress))).toBe(original===null?null:'""');
@@ -375,7 +377,7 @@ function syncArchive(wallet:string): RecoveryData {
 async function seedSync(page:Page,wallet:string) {
   const payload=syncFixture();
   await page.evaluate(({wallet,raw})=>localStorage.setItem(`chat:settingsPrefs:v1:wallet:${wallet.toLowerCase()}`,raw),{wallet,raw:serializeSettings(syncPayloadV2View(payload).settingsPrefs,payload.updatedAt,payload)});
-  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();
+  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();await openSettingsGroup(page, 'data');
 }
 test('reviews v3 sync history explicitly, exports all markers and undoes with newer intent across reload',async({page,walletAddress},testInfo)=>{
   await connect(page);await seedSync(page,walletAddress);await review(page,syncArchive(walletAddress));
@@ -393,7 +395,7 @@ test('reviews v3 sync history explicitly, exports all markers and undoes with ne
   const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'Export encrypted local data',exact:true}).click();
   const stream=await(await downloaded).createReadStream(),chunks:Buffer[]=[];for await(const chunk of stream)chunks.push(Buffer.from(chunk));
   const exported=await decryptRecoveryArchive(Buffer.concat(chunks).toString('utf8'),password,walletAddress);expect(exported).toMatchObject({version:3,syncPayload:metadata});
-  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();
+  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();await openSettingsGroup(page, 'data');
   page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Undo restore',exact:true}).click();await expect(page.getByRole('status').filter({hasText:'Restore undone.'})).toBeVisible();
   const final=await records(page,walletAddress),undone=parseSettingsRaw(final.prefs).syncPayload!;
   expect(final.marker).toBeNull();expect(undone.savedMessages.old.value).toEqual(syncFixture().savedMessages.old.value);expect(undone.savedMessages.imported.value).toBeNull();expect(undone.savedMessages['already-deleted'].value).toBeNull();
@@ -409,7 +411,7 @@ test('resumes interrupted v3 undo without dropping markers or repeating the loca
   await page.evaluate(wallet=>{const set=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key===`chat:settingsPrefs:v1:wallet:${wallet.toLowerCase()}`)throw new DOMException('Full','QuotaExceededError');return set.call(this,key,value);};},walletAddress);
   page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Undo restore',exact:true}).click();await expect(page.getByRole('alert').filter({hasText:'An unfinished restore'})).toBeVisible();
   const pending=await records(page,walletAddress);expect(pending.journal.phase).toBe('undoing');
-  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Resume unfinished restore'}).click();
+  await page.reload();await page.locator('.nav-item',{hasText:'Settings'}).click();await openSettingsGroup(page, 'data');page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Resume unfinished restore'}).click();
   await expect(page.getByRole('status').filter({hasText:'Restore undone.'})).toBeVisible();const finished=await records(page,walletAddress);
   expect(finished.data.revision).toBe(pending.data.revision);expect(finished.marker).toBeNull();expect(finished.prefs).toBe(pending.journal.undoPrefs);
   expect(parseSettingsRaw(finished.prefs).syncPayload!.savedMessages['already-deleted'].value).toBeNull();

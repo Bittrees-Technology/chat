@@ -1,3 +1,4 @@
+import { openSettingsGroup } from './fixtures/settings';
 import { test, expect } from './fixtures/wallet';
 import { decryptRecoveryArchive } from '../../apps/web/src/recoveryArchive';
 
@@ -6,6 +7,7 @@ async function openSettings(page: import('@playwright/test').Page) {
   await page.goto('/');
   await page.locator('.nav-item', { hasText: 'Settings' }).click();
   await page.getByRole('button', { name: 'Connect wallet', exact: true }).click();
+  await openSettingsGroup(page, 'data');
   await page.getByRole('heading', { name: 'Back up local data' }).waitFor();
   await page.getByLabel('Recovery passphrase', { exact: true }).fill(password);
   await page.getByLabel('Confirm recovery passphrase', { exact: true }).fill(password);

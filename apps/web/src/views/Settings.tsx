@@ -1,3 +1,4 @@
+import { SettingsGroup, SettingsIndex } from "./SettingsGroup";
 import { MessagingDevicesView } from "./MessagingDevices";
 import { optionalSections, useSectionPreferences } from "../featurePreferences";
 import { ConversationRecoveryView } from "./ConversationRecovery";
@@ -150,16 +151,9 @@ export function Settings(
   return (
     <div className="settings">
       <h1>{t("nav.settings")}</h1>
-      <section className="card" aria-label={t("settings.sectionsTitle")}>
-        <h2>{t("settings.sectionsTitle")}</h2>
-        <p className="muted">{t("settings.sectionsHelp")}</p>
-        {sectionError && <p role="alert">{t("settings.sectionsError")}</p>}
-        {optionalSections.map(section => <div className="pref-row" key={section}>
-          <div className="pref-title">{t(`settings.section.${section}`)}</div>
-          <Toggle checked={sections[section]} disabled={storageBusy || !!storageError || recoveryPaused || sectionError}
-            label={t(`settings.section.${section}`)} onChange={enabled => { onSectionChange?.(); setSection(section, enabled); }} />
-        </div>)}
-      </section>
+      {syncMessage && <div role="status" className={`settings-notice muted ${syncMessageKind === 'success' ? 'status-positive' : syncMessageKind === 'error' ? 'status-error' : ''}`}>
+        {translateStatus(t, syncMessage)}
+      </div>}
       {organizationStorageError && <p role="alert">{t("settings.orgStorageError")}</p>}
       {recoverySnapshots.length > 0 && <section className="card" aria-label={t("settings.orgRecovery")}>
         <h2>{t("settings.orgRecovery")}</h2>
@@ -169,12 +163,13 @@ export function Settings(
         </Button>
       </section>}
 
+      <SettingsIndex />
+      <SettingsGroup id="profile" initiallyOpen>
       <section className="card">
         <div className="profile-row">
           <div className="profile-main">
             <Avatar id={identity.address} label={profileName} src={profileAvatar} size={64} />
             <div>
-              <h2>{t("settings.profile")}</h2>
               <div className="profile-name">{profileName}</div>
               <div className="muted">{shortAddr(identity.address)}</div>
             </div>
@@ -193,9 +188,6 @@ export function Settings(
         )}
       </section>
 
-      <PublicProfile />
-      <DisplayWallet />
-
       <section className="card">
         <h2>{t("settings.account")}</h2>
         <p className="muted">
@@ -207,17 +199,9 @@ export function Settings(
                 ? t("settings.walletConnectIdentity")
                 : t("settings.localIdentity")}
         </p>
-        <p className="muted">
-          {t("settings.mode")} <span className="pill">{transportId}</span> {transportText}
-        </p>
         <div className="grid2">
           <Field label={t("settings.displayName")}><DisplayNameInput key={`${mode}:${identity.address}`} value={identity.handle ?? ""} save={setHandle} /></Field>
           <Field label={t("settings.address")}><input className="input" value={identity.address} readOnly /></Field>
-          <Field label={t("settings.language")}>
-            <select className="input" value={lang} onChange={(e) => setLang(e.target.value as LangCode)}>
-              {Object.entries(LANGS).map(([code, l]) => <option key={code} value={code}>{l.label}</option>)}
-            </select>
-          </Field>
         </div>
         <p className="muted">{t("settings.localProfileHelp")}</p>
         {mode === "wallet" && <Button variant="ghost" onClick={resetHandle}>{t("settings.useEnsName")}</Button>}
@@ -251,9 +235,77 @@ export function Settings(
             </>
           )}
         </div>
+      </section>
+        {mode === 'wallet' && <details className="settings-tools"><summary>{t('settings.publicIdentity')}</summary>
+          <PublicProfile /><DisplayWallet />
+        </details>}
+      </SettingsGroup>
+      <SettingsGroup id="preferences" initiallyOpen>
+        <section className="card settings-language">
+          <Field label={t("settings.language")}>
+            <select className="input" value={lang} onChange={(e) => setLang(e.target.value as LangCode)}>
+              {Object.entries(LANGS).map(([code, l]) => <option key={code} value={code}>{l.label}</option>)}
+            </select>
+          </Field>
+        </section>
+      <section className="card" aria-label={t("settings.sectionsTitle")}>
+        <h2>{t("settings.sectionsTitle")}</h2>
+        <p className="muted">{t("settings.sectionsHelp")}</p>
+        {sectionError && <p role="alert">{t("settings.sectionsError")}</p>}
+        {optionalSections.map(section => <div className="pref-row" key={section}>
+          <div className="pref-title">{t(`settings.section.${section}`)}</div>
+          <Toggle checked={sections[section]} disabled={storageBusy || !!storageError || recoveryPaused || sectionError}
+            label={t(`settings.section.${section}`)} onChange={enabled => { onSectionChange?.(); setSection(section, enabled); }} />
+        </div>)}
+      </section>
+      <section className="card">
+        <div className="pref-row">
+          <div>
+            <div className="pref-title">{t("settings.receiptTitle")}</div>
+            <div className="muted">
+              {t("settings.receiptHelp")}
+            </div>
+          </div>
+          {storageBusy && <span role="status">{t("settings.saving")}</span>}
+          <Toggle disabled={storageBusy || !!storageError || recoveryPaused} checked={prefs.readReceiptsDefault} onChange={setReadReceiptsDefault} label={t("settings.receiptLabel")} />
+        </div>
+        <div className="pref-row">
+          <div>
+            <div className="pref-title">{t("settings.syncTitle")}</div>
+            <div className="muted">{syncDescription}</div>
+            {syncState.error && <div role="alert">{translateStatus(t, syncState.error)}</div>}
+
+          </div>
+          <Button
+            variant={prefs.syncAcrossDevices ? "ghost" : "primary"}
+            onClick={handleSyncClick}
+            disabled={syncState.isEncrypting}
+          >
+            {syncState.isEncrypting ? t("settings.signing") : prefs.syncAcrossDevices && syncState.hasSessionKey ? t("settings.turnOff") : prefs.syncAcrossDevices ? t("settings.reenable") : t("settings.turnOn")}
+          </Button>
+        </div>
+        <p className="field-hint">{t('settings.syncUpgradeHelp')}</p>
+        {syncState.migrationChoiceRequired && <div role="group" aria-label={t('settings.syncMigrationChoice')}>
+          <p>{t('settings.syncMigrationHelp')}</p>
+          {(['remote', 'local'] as const).map(choice => <Button key={choice} disabled={syncState.isEncrypting || storageBusy || !!storageError || recoveryPaused} onClick={async () => {
+            const result = await enableSyncAcrossDevices(choice); setSyncMessage(result.message); setSyncMessageKind(result.ok ? 'success' : 'error');
+          }}>{t(choice === 'remote' ? 'settings.syncUseRemote' : 'settings.syncUseLocal')}</Button>)}
+        </div>}
+      </section>
+      <section className="card">
+        <h2>{t("list.blocked", "Blocked")}</h2>
+        <p>{t("settings.blockedHelp", "Manage blocked conversations in Chats → Blocked. Blocking hides this direct conversation and stops your outgoing messages and receipts. It does not remove messages from shared rooms.")}</p>
+        {prefs.blocked.length > 0 && <details><summary>{t('settings.legacyBlocks')}</summary><p>{t('settings.legacyBlocksHelp')}</p>
+          <ul className="local-items">{prefs.blocked.map(address => <li key={address} className="restore-text">{address} <Button disabled={storageBusy || !!storageError || recoveryPaused || syncState.isEncrypting} onClick={() => { void removeLegacyBlockedAddress(address); }}>{t('settings.legacyBlockRemove')}</Button></li>)}</ul>
+        </details>}
+      </section>
+
+      </SettingsGroup>
+      <SettingsGroup id="messaging" initiallyOpen attention={transportNeedsRevoke || !!transportError}>
+<section className="card">
         <div className="pref-row account-messaging">
           <div>
-            <div className="pref-title">{t("settings.messaging")}</div>
+            <div className="pref-title">{t("settings.connection")}</div>
             {transportId !== "xmtp" ? (
               <div className="muted">{t("settings.mockMessaging")}</div>
             ) : mode !== "wallet" ? (
@@ -294,10 +346,10 @@ export function Settings(
         <HistoryRecovery key={`history:${identity.address.toLowerCase()}:${activeOrgId}`} request={requestHistorySync} />}
       {transportId === 'xmtp' && transportStatus === 'ready' && <MessagingDiagnosticsView key={`diagnostics:${identity.address.toLowerCase()}:${activeOrgId}`} inspect={inspectMessaging} />}
       {transportId === 'xmtp' && transportStatus === 'ready' && <ConversationRecoveryView key={`recovery:${identity.address.toLowerCase()}:${activeOrgId}`} recover={recoverMissingConversation} />}
-      {mode === 'wallet' && <SettingsRestore key={`restore:${identity.address.toLowerCase()}`} wallet={identity.address} />}
-      {mode === 'wallet' && !storageError && !recoveryPaused && <SettingsRecovery key={identity.address.toLowerCase()} wallet={identity.address}
-        preferences={{ blocked: prefs.blocked, readReceiptsDefault: prefs.readReceiptsDefault, readReceiptOverrides: prefs.readReceiptOverrides ?? {} }} />}
-
+        <details className="settings-tools"><summary>{t('settings.technicalDetails')}</summary>
+        <p className="muted">
+          {t("settings.mode")} <span className="pill">{transportId}</span> {transportText}
+        </p>
       <section className="card">
         <h2>{t("settings.resolver")}</h2>
         <Field
@@ -316,44 +368,13 @@ export function Settings(
         </div>
       </section>
 
-      <section className="card">
-        <div className="pref-row">
-          <div>
-            <div className="pref-title">{t("settings.receiptTitle")}</div>
-            <div className="muted">
-              {t("settings.receiptHelp")}
-            </div>
-          </div>
-          {storageBusy && <span role="status">{t("settings.saving")}</span>}
-          <Toggle disabled={storageBusy || !!storageError || recoveryPaused} checked={prefs.readReceiptsDefault} onChange={setReadReceiptsDefault} label={t("settings.receiptLabel")} />
-        </div>
-        <div className="pref-row">
-          <div>
-            <div className="pref-title">{t("settings.syncTitle")}</div>
-            <div className="muted">{syncDescription}</div>
-            {syncState.error && <div role="alert">{translateStatus(t, syncState.error)}</div>}
-            {syncMessage && (
-              <div role="status" className={`muted sync-status ${syncMessageKind === "success" ? "status-positive" : syncMessageKind === "error" ? "status-error" : ""}`}>
-                {translateStatus(t, syncMessage)}
-              </div>
-            )}
-          </div>
-          <Button
-            variant={prefs.syncAcrossDevices ? "ghost" : "primary"}
-            onClick={handleSyncClick}
-            disabled={syncState.isEncrypting}
-          >
-            {syncState.isEncrypting ? t("settings.signing") : prefs.syncAcrossDevices && syncState.hasSessionKey ? t("settings.turnOff") : prefs.syncAcrossDevices ? t("settings.reenable") : t("settings.turnOn")}
-          </Button>
-        </div>
-        <p className="field-hint">{t('settings.syncUpgradeHelp')}</p>
-        {syncState.migrationChoiceRequired && <div role="group" aria-label={t('settings.syncMigrationChoice')}>
-          <p>{t('settings.syncMigrationHelp')}</p>
-          {(['remote', 'local'] as const).map(choice => <Button key={choice} disabled={syncState.isEncrypting || storageBusy || !!storageError || recoveryPaused} onClick={async () => {
-            const result = await enableSyncAcrossDevices(choice); setSyncMessage(result.message); setSyncMessageKind(result.ok ? 'success' : 'error');
-          }}>{t(choice === 'remote' ? 'settings.syncUseRemote' : 'settings.syncUseLocal')}</Button>)}
-        </div>}
-      </section>
+        </details>
+      </SettingsGroup>
+      <SettingsGroup id="data" attention={recoveryPaused}>
+      {mode === 'wallet' && <SettingsRestore key={`restore:${identity.address.toLowerCase()}`} wallet={identity.address} />}
+      {mode === 'wallet' && !storageError && !recoveryPaused && <SettingsRecovery key={identity.address.toLowerCase()} wallet={identity.address}
+        preferences={{ blocked: prefs.blocked, readReceiptsDefault: prefs.readReceiptsDefault, readReceiptOverrides: prefs.readReceiptOverrides ?? {} }} />}
+
       {legacySavedItems.length > 0 && <section className="card" aria-label={t('settings.legacySaved')}>
         <h2>{t('settings.legacySaved')}</h2><p className="muted">{t('settings.legacySavedHelp')}</p>
         <ul className="local-items">{legacySavedItems.map(item => <li key={item.id} className="restore-text"><strong>{item.id}</strong><p>{typeof item.body === 'string' ? item.body : JSON.stringify(item)}</p>
@@ -365,8 +386,18 @@ export function Settings(
         </li>)}</ul>
       </section>}
 
-      <UpdateCard />
+      <section className="card">
+        <h2>{t("settings.syncSecurity")}</h2>
+        <p>{t("settings.revokeHelp")}</p>
+        <Button variant="danger" disabled={syncState.isEncrypting || mode !== "wallet"} onClick={async () => {
+          const result = await revokeAllSyncDevices();
+          setSyncMessage(result.message);
+          setSyncMessageKind(result.ok ? "success" : "error");
+        }}>{t("settings.revokeAll")}</Button>
+      </section>
 
+      </SettingsGroup>
+      <SettingsGroup id="organizations">
       <section className="card">
         <div className="row-between">
           <h2>{t("settings.organizations")}</h2>
@@ -398,7 +429,7 @@ export function Settings(
       </section>
 
       <section className="card">
-        <h2>{t("settings.activeOrg")}</h2><p><a href="https://chat.bittrees.org/administration" target="_blank" rel="noopener noreferrer">Project administration and roles</a></p>
+        <h2>{t("settings.activeOrg")}</h2><p><a href="https://chat.bittrees.org/administration" target="_blank" rel="noopener noreferrer">{t("settings.administrationLink")}</a></p>
         <div className="org-detail">
           <div><strong>{activeOrg.branding.name}</strong> <span className="muted">({shortAddr(activeOrg.id)})</span></div>
           <div className="muted">{t("settings.orgDetails", undefined, { accent: activeOrg.branding.accent ?? "", namespace: activeOrg.namespace })}</div>
@@ -407,24 +438,8 @@ export function Settings(
         </div>
       </section>
 
-      <section className="card">
-        <h2>{t("settings.syncSecurity")}</h2>
-        <p>{t("settings.revokeHelp")}</p>
-        <Button variant="danger" disabled={syncState.isEncrypting || mode !== "wallet"} onClick={async () => {
-          const result = await revokeAllSyncDevices();
-          setSyncMessage(result.message);
-          setSyncMessageKind(result.ok ? "success" : "error");
-        }}>{t("settings.revokeAll")}</Button>
-      </section>
-
-      <section className="card">
-        <h2>{t("list.blocked", "Blocked")}</h2>
-        <p>{t("settings.blockedHelp", "Manage blocked conversations in Chats → Blocked. Blocking hides this direct conversation and stops your outgoing messages and receipts. It does not remove messages from shared rooms.")}</p>
-        {prefs.blocked.length > 0 && <details><summary>{t('settings.legacyBlocks')}</summary><p>{t('settings.legacyBlocksHelp')}</p>
-          <ul className="local-items">{prefs.blocked.map(address => <li key={address} className="restore-text">{address} <Button disabled={storageBusy || !!storageError || recoveryPaused || syncState.isEncrypting} onClick={() => { void removeLegacyBlockedAddress(address); }}>{t('settings.legacyBlockRemove')}</Button></li>)}</ul>
-        </details>}
-      </section>
-
+      </SettingsGroup>
+      <UpdateCard />
       <p className="muted settings-footer">
         {t("settings.footer")}
       </p>
