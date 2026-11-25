@@ -9,18 +9,18 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-async function setup() {
+async function setup(address = wallet) {
   const { XmtpTransport } = await import('../src/xmtp');
-  const accounts = { value: [wallet] };
+  const accounts = { value: [address] };
   let onSign = () => {};
   const provider = { request: vi.fn(async ({ method }: { method: string }) => {
     if (method === 'eth_accounts') return accounts.value;
     if (method === 'personal_sign') { onSign(); return '0x1234'; }
     throw Error('Unexpected wallet request');
   }) };
-  const transport = new XmtpTransport(PERSONAL_ORG, { address: wallet }, provider);
+  const transport = new XmtpTransport(PERSONAL_ORG, { address }, provider);
   const backend = {};
-  const state: any = { inboxId: inbox, accountIdentifiers: [{ identifier: wallet, identifierKind: 0 }],
+  const state: any = { inboxId: inbox, accountIdentifiers: [{ identifier: address, identifierKind: 0 }],
     installations: [1, 2].map(byte => ({ id: byte.toString(16).padStart(2, '0').repeat(32), bytes: new Uint8Array(32).fill(byte) })) };
   const submitted = vi.fn();
   const sdk = { IdentifierKind: { Ethereum: 0 }, LogLevel: { Off: 0 },
@@ -168,4 +168,25 @@ it.each(['current', 'gone'])('withholds the signature if the selected device bec
   });
   await expect(f.transport.revokeMessagingDevice('02'.repeat(32))).rejects.toThrow('selection changed');
   expect(f.submitted).not.toHaveBeenCalled(); expect(data.size).toBe(0);
+});
+
+it('holds the same pending inbox removal after switching to another linked wallet', async () => {
+  singleDeviceStorage(); const f = await setup();
+  f.sdk.Client.revokeInstallations.mockImplementationOnce(async signer => { await signer.signMessage('Synthetic uncertain removal'); throw new Error('Network uncertainty'); });
+  await expect(f.transport.revokeMessagingDevice('02'.repeat(32))).rejects.toThrow('unconfirmed');
+  const linked = await setup(other);
+  await expect(linked.transport.revokeMessagingDevice('01'.repeat(32))).rejects.toThrow('unconfirmed');
+  noAuthorization(linked);
+});
+it('refuses an inbox change between metadata selection and acquiring its removal guard', async () => {
+  singleDeviceStorage(); const f = await setup();
+  const inspect = f.transport.inspectMessagingDevices.bind(f.transport);
+  let reads = 0;
+  Object.assign(f.transport, { inspectMessagingDevices: async () => {
+    const result = await inspect();
+    if (++reads === 1) { f.state.inboxId = alternate; f.sdk.getInboxIdForIdentifier.mockResolvedValue(alternate); }
+    return result;
+  } });
+  await expect(f.transport.revokeMessagingDevice('02'.repeat(32))).rejects.toThrow('binding changed');
+  noAuthorization(f);
 });

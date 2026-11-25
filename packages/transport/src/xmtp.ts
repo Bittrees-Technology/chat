@@ -650,16 +650,20 @@ export class XmtpTransport implements Transport {
     if (!/^[a-f0-9]{64}$/.test(installationId)) throw new Error("Invalid messaging device selection.");
     const locks = globalThis.navigator?.locks;
     if (!locks) throw new Error("This browser cannot safely coordinate device removal.");
-    await locks.request(`chat.device-removal:${xmtpEnv()}:${this.myAddress}`, { ifAvailable: true }, async lock => {
+    const sdk = await this.loadSdk();
+    const devices = await this.inspectMessagingDevices();
+    if (!devices.inboxId) throw new Error("No verified messaging inbox. Reopen messaging recovery.");
+    // Linked wallets share one inbox and must share its uncertainty/coordination guard.
+    const expectedInboxId = devices.inboxId;
+    await locks.request(`chat.device-removal:${xmtpEnv()}:${expectedInboxId}`, { ifAvailable: true }, async lock => {
       if (!lock) throw new Error("Device removal is already in progress in another tab.");
-      const sdk = await this.loadSdk();
-      await this.revokeStaleInstallations(sdk, installationId);
+      await this.revokeStaleInstallations(sdk, installationId, expectedInboxId);
     });
   }
 
   /** Revoke every installation currently registered on this inbox (no client needed —
    *  uses the static revoke path, which works even at the 10/10 limit). */
-  private async revokeStaleInstallations(sdk: Sdk, selectedId?: string): Promise<number> {
+  private async revokeStaleInstallations(sdk: Sdk, selectedId?: string, expectedInboxId?: string): Promise<number> {
     if (!this.provider) throw new Error("Connect a wallet to revoke installations.");
     const provider = this.provider;
     const checkWallet = async () => {
@@ -674,6 +678,7 @@ export class XmtpTransport implements Transport {
     const devices = await this.inspectMessagingDevices();
     if (!devices.inboxId) throw new Error("No verified messaging inbox. Reopen messaging recovery.");
     const inboxId = devices.inboxId;
+    if (expectedInboxId && inboxId !== expectedInboxId) throw new Error("Messaging inbox binding changed. Reopen messaging recovery.");
     const identifier = await this.identifier();
     const backend = await sdk.createBackend({ env: xmtpEnv() });
     const checkBinding = async () => {
@@ -684,7 +689,7 @@ export class XmtpTransport implements Transport {
       await checkWallet();
     };
     await checkBinding();
-    const removal = selectedId ? deviceRemovalRecord(`${xmtpEnv()}:${this.myAddress}:${inboxId}`) : null;
+    const removal = selectedId ? deviceRemovalRecord(`${xmtpEnv()}:${inboxId}`) : null;
     if (selectedId) {
       removal!.reconcile(devices.installations.map(device => device.id));
       removal!.ready();
