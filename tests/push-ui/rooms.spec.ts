@@ -214,7 +214,9 @@ test('reconnects the same wallet without accepting history from its disposed ses
 });
 test('invalidates the room session when the organization changes', async ({ page }) => {
   await openRoom(page); await enable(page); await expect(page.getByText('Preserved Push history', { exact: true })).toBeVisible();
-  await page.locator('.nav-item', { hasText: 'Settings' }).click(); await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await page.locator('.nav-item', { hasText: 'Settings' }).click();
+  await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link', { name: 'Organizations', exact: true }).click();
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Import organization' });
   await dialog.getByRole('textbox').fill(JSON.stringify({ version: 1, branding: { name: 'Another organization' }, namespace: 'push-scope-test', chain: { chainId: 1 }, entryGate: [], gating: {} }));
   await dialog.getByRole('button', { name: 'Import', exact: true }).click(); await expect(dialog).toHaveCount(0);
