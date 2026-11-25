@@ -87,10 +87,12 @@ export interface Transport {
   readonly warning?: string;
   /** Identity this transport is acting as. */
   me(): Identity;
-  init(): Promise<void>;
+  /** Signer-free local resume. Explicit false fences unverified startup scopes;
+   * true lets a verified wallet probe without relying on a convenience flag. */
+  init(opts?: { resumeSaved?: boolean }): Promise<void>;
   /** Create the encrypted inbox. `revokeStale` first revokes the inbox's existing
    *  installations (used to recover from XMTP's 10-installation-per-inbox limit). */
-  enable?(opts?: { revokeStale?: boolean }): Promise<void>;
+  enable?(opts?: { revokeStale?: boolean; resumeOnly?: boolean }): Promise<void>;
   /** Ask an existing online installation for history; resolution only confirms the request. */
   requestHistorySync?(): Promise<void>;
   inspectMessaging?(conversationId?: string): Promise<MessagingDiagnostics>;
@@ -137,5 +139,8 @@ export type MessagingDiagnostics = {
 export type MessagingDevices = {
   inboxId: string | null;
   localInstallationId: string | null;
+  startup?: { remembered: boolean; outcome: 'skipped' | 'opening' | 'ready' | 'unregistered' | 'failed';
+    phase?: 'sdk' | 'store' | 'registration' | 'inbox'; reason?: 'storage' | 'identity' | 'network' | 'other';
+    installationId?: string; inboxId?: string };
   installations: Array<{ id: string; createdAtMs: number | null }>;
 };

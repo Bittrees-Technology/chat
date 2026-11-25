@@ -861,7 +861,7 @@ interface ChatCtx {
   isHistory: boolean;
   hasOlderMessages: boolean;
   navigateHistory: (direction: "older" | "newer" | "latest" | "refresh") => void;
-  enableMessaging: (opts?: { revokeStale?: boolean }) => Promise<void>;
+  enableMessaging: (opts?: { revokeStale?: boolean; resumeOnly?: boolean }) => Promise<void>;
   requestHistorySync: () => Promise<void>;
   inspectMessaging: (conversationId?: string) => Promise<MessagingDiagnostics>;
   inspectMessagingDevices: () => Promise<MessagingDevices>;
@@ -888,7 +888,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const { identity, mode } = useIdentity();
   const { activeOrg } = useOrgs();
   const transportRef = useRef<Transport | null>(null);
-  const [transportId, setTransportId] = useState("mock");
+  const [transportId, setTransportId] = useState<string>(DEFAULT_TRANSPORT);
   const [transportStatus, setTransportStatus] = useState("idle");
   const [transportError, setTransportError] = useState<string | null>(null);
   const [transportNeedsRevoke, setTransportNeedsRevoke] = useState(false);
@@ -976,6 +976,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     let unsub = () => {};
     let cancelled = false;
     transportRef.current = null;
+    setTransportStatus('enabling');
     setConversations([]);
     setMessages([]);
     setActiveId(null);
@@ -985,7 +986,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       const provider = mode === "wallet" ? getActiveProvider() : null;
       const t = createTransport(DEFAULT_TRANSPORT, activeOrg, identity, provider, readDisplayWallets);
       setTransportError(null);
-      await t.init().catch((err) => {
+      await t.init({ resumeSaved: mode === 'wallet' }).catch((err) => {
         if (!cancelled) setTransportError(err instanceof Error ? err.message : "Transport failed to initialize.");
       });
       if (cancelled) return;
@@ -1030,7 +1031,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     await transportRef.current?.markRead(activeId, { sendReceipt: receiptOverride(prefs.readReceiptOverrides, activeId) ?? prefs.readReceiptsDefault, throughMessageId });
   }, [activeId, prefs.readReceiptsDefault, prefs.readReceiptOverrides]);
 
-  const enableMessaging = useCallback(async (opts?: { revokeStale?: boolean }) => {
+  const enableMessaging = useCallback(async (opts?: { revokeStale?: boolean; resumeOnly?: boolean }) => {
     const t = transportRef.current;
     if (!t?.enable) return;
     setTransportError(null);

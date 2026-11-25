@@ -185,3 +185,82 @@ it('holds an uncertain device inventory before registration', async () => {
   await expect(f.transport.enable()).rejects.toThrow('Device lookup unavailable');
   expect(f.sdk.Client.create).not.toHaveBeenCalled();
 });
+
+it('automatically opens an existing store for a verified wallet when its convenience flag is missing', async () => {
+  const f = await setup(); localStorage.removeItem('chirpy.xmtp.ready.' + wallet);
+  await f.transport.init({ resumeSaved: true });
+  expect(f.transport.status).toBe('ready'); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+  expect(localStorage.getItem('chirpy.xmtp.ready.' + wallet)).toBe('1');
+});
+it('does not open a private store for an explicitly unverified caller even when its flag exists', async () => {
+  const f = await setup(); await f.transport.init({ resumeSaved: false });
+  expect(f.sdk.Client.build).not.toHaveBeenCalled(); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+  expect(f.transport.status).toBe('idle');
+});
+it('keeps a verified first-time store unregistered without requesting a signature', async () => {
+  const f = await setup(); localStorage.removeItem('chirpy.xmtp.ready.' + wallet); f.existing.isRegistered.mockResolvedValue(false);
+  await f.transport.init({ resumeSaved: true }); expect(f.transport.status).toBe('idle');
+  expect(f.existing.close).toHaveBeenCalledOnce(); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+});
+it('serializes overlapping startup scopes instead of opening the same store twice', async () => {
+  const first = await setup(), second = await setup();
+  let release!: () => void;
+  first.sdk.Client.build.mockImplementationOnce(async () => { await new Promise<void>(resolve => { release = resolve; }); return first.existing; });
+  const a = first.transport.init({ resumeSaved: true }); const b = second.transport.init({ resumeSaved: true });
+  await vi.waitFor(() => expect(first.sdk.Client.build).toHaveBeenCalledOnce());
+  expect(second.sdk.Client.build).not.toHaveBeenCalled(); release(); await Promise.all([a, b]);
+  expect(first.transport.status).toBe('ready'); expect(second.transport.status).toBe('ready');
+  expect(second.sdk.Client.build).not.toHaveBeenCalled();
+  expect(first.sdk.Client.create).not.toHaveBeenCalled(); expect(second.sdk.Client.create).not.toHaveBeenCalled();
+});
+it('a saved-session-only retry never creates or revokes an installation even for an unregistered store', async () => {
+  const f = await setup(); f.existing.isRegistered.mockResolvedValue(false);
+  await expect(f.transport.enable({ resumeOnly: true })).rejects.toThrow('Existing devices were kept');
+  expect(f.sdk.Client.create).not.toHaveBeenCalled(); expect(f.transport.inspectMessagingDevices).not.toHaveBeenCalled();
+});
+it('rejects a conflicting saved-session retry and revocation request before doing anything', async () => {
+  const f = await setup();
+  await expect(f.transport.enable({ resumeOnly: true, revokeStale: true })).rejects.toThrow('cannot revoke');
+  expect(f.sdk.Client.build).not.toHaveBeenCalled(); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+});
+it('reports only fixed startup categories and public IDs after an opening failure', async () => {
+  const f = await setup(); f.sdk.Client.build.mockRejectedValueOnce(new Error('OPFS lock unavailable NEVER_INCLUDE_SECRET'));
+  await f.transport.init({ resumeSaved: true });
+  const report = (f.transport as any).startupReport;
+  expect(report).toEqual({ remembered: true, outcome: 'failed', phase: 'store', reason: 'storage' });
+  expect(JSON.stringify(report)).not.toContain('NEVER_INCLUDE'); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+});
+
+it('does not reuse an open private client for an explicitly unverified scope', async () => {
+  const first = await setup(); await first.transport.init({ resumeSaved: true });
+  const next = await setup(); await next.transport.init({ resumeSaved: false });
+  expect(next.transport.status).toBe('idle'); expect(next.sdk.Client.build).not.toHaveBeenCalled();
+  expect((next.transport as any).client).toBeNull();
+});
+it('retains an open shared store after a transient later-scope inbox failure', async () => {
+  const first = await setup(); await first.transport.init({ resumeSaved: true });
+  const next = await setup(); const list = vi.fn(async () => []); list.mockRejectedValueOnce(new Error('temporary inbox error'));
+  Object.assign(next.transport, { listConversations: list });
+  await next.transport.init({ resumeSaved: true }); expect(next.transport.status).toBe('idle');
+  await next.transport.enable({ resumeOnly: true });
+  expect(next.transport.status).toBe('ready'); expect(next.sdk.Client.build).not.toHaveBeenCalled();
+  expect(next.sdk.Client.create).not.toHaveBeenCalled(); expect(first.existing.close).not.toHaveBeenCalled();
+});
+
+it('a saved-only SDK load failure exposes a fixed error without provider details or signing', async () => {
+  const f = await setup(); Object.assign(f.transport, { loadSdk: async () => { throw new Error('fetch failed NEVER_INCLUDE_PRIVATE_DETAILS'); } });
+  await expect(f.transport.enable({ resumeOnly: true })).rejects.toThrow('Existing devices were kept');
+  expect((f.transport as any).startupReport).toEqual({ remembered: true, outcome: 'failed', phase: 'sdk', reason: 'network' });
+  expect(f.sdk.Client.create).not.toHaveBeenCalled(); expect(f.provider.request).not.toHaveBeenCalled();
+});
+
+it('releases messaging handles on a real page exit while preserving a back-forward cached session', async () => {
+  const page = new EventTarget(); vi.stubGlobal('window', page);
+  const f = await setup(); await f.transport.init({ resumeSaved: true });
+  const cached = new Event('pagehide'); Object.defineProperty(cached, 'persisted', { value: true }); page.dispatchEvent(cached);
+  expect(f.existing.close).not.toHaveBeenCalled();
+  const leaving = new Event('pagehide'); Object.defineProperty(leaving, 'persisted', { value: false }); page.dispatchEvent(leaving);
+  expect(f.existing.close).toHaveBeenCalledOnce();
+  const next = await setup(); await next.transport.init({ resumeSaved: true });
+  expect(next.sdk.Client.build).toHaveBeenCalledOnce(); expect(next.transport.status).toBe('ready');
+});

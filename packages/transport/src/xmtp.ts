@@ -49,6 +49,21 @@ export interface ConversationClassificationMeta {
 
 let SDK: Sdk | null = null;
 let sharedXmtp: { address: string; client: XmtpClient } | null = null;
+const pendingStartups = new Map<string, Promise<void>>();
+const openClients = new Set<XmtpClient>();
+let unloadCleanupInstalled = false;
+function trackOpenClient(client: XmtpClient) {
+  openClients.add(client);
+  if (typeof window === 'undefined' || unloadCleanupInstalled) return;
+  window.addEventListener('pagehide', event => {
+    if (event.persisted) return; // Keep a back/forward-cached page's live session.
+    sharedXmtp = null;
+    for (const opened of openClients) { try { opened.close(); } catch { /* The page is leaving; never mutate stored identity. */ } }
+    openClients.clear();
+  });
+  unloadCleanupInstalled = true;
+}
+function releaseClient(client: XmtpClient) { openClients.delete(client); client.close(); }
 const roomIdentityResolvers = new WeakMap<XmtpClient, InboxIdentities>();
 
 const READY_PREFIX = "chirpy.xmtp.ready.";
@@ -235,6 +250,7 @@ export class XmtpTransport implements Transport {
   status: TransportStatus = "idle";
   warning: string | undefined;
 
+  private startupReport?: NonNullable<MessagingDevices['startup']>;
   private sdk: Sdk | null = null;
   private client: XmtpClient | null = null;
   private conversations = new Map<string, XmtpConversation>();
@@ -447,54 +463,107 @@ export class XmtpTransport implements Transport {
     }
   }
 
-  async init(): Promise<void> {
+  private assertAdopted(client: XmtpClient) {
+    if (this.client !== client || this.status !== 'ready') throw new Error('The saved messaging installation is unavailable. Check its recovery status before trying again.');
+  }
+
+  private noteStartupClient(client: XmtpClient) {
+    if (!this.startupReport) return;
+    try {
+      const id = client.installationId, inbox = client.inboxId;
+      if (typeof id === 'string' && /^[a-f0-9]{64}$/.test(id)) this.startupReport.installationId = id;
+      if (typeof inbox === 'string' && /^[a-f0-9]{64}$/.test(inbox)) this.startupReport.inboxId = inbox;
+    } catch { /* Diagnostics must never interfere with opening a saved session. */ }
+  }
+
+  private noteStartupFailure(error: unknown) {
+    if (!this.startupReport) return;
+    const message = error instanceof Error ? error.message : '';
+    this.startupReport.outcome = 'failed';
+    this.startupReport.reason = /opfs|sqlite|lock|already.*open/i.test(message) ? 'storage'
+      : isUnregisteredIdentity(error) ? 'identity' : /network|fetch|timeout|connection.*unavailable/i.test(message) ? 'network' : 'other';
+  }
+
+  async init(opts?: { resumeSaved?: boolean }): Promise<void> {
+    const key = `${xmtpEnv()}:${this.myAddress}`;
+    // React/account/org initialization can overlap. Only one opener may acquire
+    // this wallet's persistent store; later scopes reuse its verified client.
+    const previous = pendingStartups.get(key) ?? Promise.resolve();
+    const current = previous.catch(() => {}).then(() => this.openSavedSession(opts));
+    pendingStartups.set(key, current);
+    try { await current; }
+    finally { if (pendingStartups.get(key) === current) pendingStartups.delete(key); }
+  }
+
+  private async openSavedSession(opts?: { resumeSaved?: boolean }): Promise<void> {
+    this.startupReport = { remembered: wasEnabled(this.myAddress), outcome: 'skipped' };
     if (!ETH_ADDRESS.test(this.myAddress)) {
       this.status = "idle";
       return;
     }
+    if (opts?.resumeSaved === false) { this.status = 'idle'; return; }
     if (sharedXmtp?.address.toLowerCase() === this.myAddress) {
+      const cached = sharedXmtp.client;
       try {
-        await this.adopt(sharedXmtp.client);
-        return;
-      } catch {
-        sharedXmtp = null;
+        this.startupReport.phase = 'inbox'; this.noteStartupClient(cached);
+        await this.adopt(cached); this.assertAdopted(cached);
+        this.startupReport.outcome = 'ready';
+      } catch (error) {
+        this.noteStartupFailure(error); this.client = null; this.status = 'idle';
+        // A transient inbox failure must not discard the only open store handle.
+        // An explicit identity reset already cleared sharedXmtp; release that client.
+        if (sharedXmtp?.client !== cached) releaseClient(cached);
       }
+      return;
     }
-    if (!wasEnabled(this.myAddress)) {
+    // A verified signed-in wallet may probe its saved local store even if this
+    // non-authoritative convenience flag is missing. Build cannot register/sign.
+    if (opts?.resumeSaved !== true && !this.startupReport.remembered) {
       this.status = "idle";
       return;
     }
 
     let candidate: XmtpClient | null = null;
+    this.startupReport.outcome = 'opening';
     try {
+      this.startupReport.phase = 'sdk';
       const sdk = await this.loadSdk();
+      this.startupReport.phase = 'store';
       const client = candidate = await sdk.Client.build(
         await this.identifier(),
         xmtpOptions(sdk) as Parameters<typeof sdk.Client.build>[1],
       );
+      this.noteStartupClient(client); this.startupReport.phase = 'registration';
       // Shared sign-in can resume the local installation without a wallet signer.
       // A fresh/unregistered local database is not an enabled messaging session.
       if (await client.isRegistered() !== true) {
-        client.close();
+        this.startupReport.outcome = 'unregistered';
+        releaseClient(client);
         this.status = "idle";
         return;
       }
-      sharedXmtp = { address: this.myAddress, client };
+      trackOpenClient(client); sharedXmtp = { address: this.myAddress, client };
+      this.startupReport.phase = 'inbox';
       await this.adopt(client);
-    } catch {
+      this.assertAdopted(client);
+      this.startupReport.outcome = 'ready'; markEnabled(this.myAddress);
+    } catch (error) {
+      this.noteStartupFailure(error);
       // Keep a verified shared client for an explicit retry after inbox failure,
       // but release a candidate whose registration could not be established.
-      if (candidate && sharedXmtp?.client !== candidate) candidate.close();
+      if (candidate && sharedXmtp?.client !== candidate) releaseClient(candidate);
       this.client = null;
       this.status = "idle";
     }
   }
 
-  async enable(opts?: { revokeStale?: boolean }): Promise<void> {
+  async enable(opts?: { revokeStale?: boolean; resumeOnly?: boolean }): Promise<void> {
+    if (opts?.revokeStale && opts?.resumeOnly) throw new Error('Saved-session retry cannot revoke devices.');
+    this.startupReport = { remembered: wasEnabled(this.myAddress), outcome: 'opening', phase: 'sdk' };
     const provider = this.provider;
-    const sdk = await this.loadSdk();
     this.status = "enabling";
     try {
+      const sdk = await this.loadSdk();
       // A failed automatic resume can be a temporary network/storage error.
       // Reopen the saved installation first rather than registering another one.
       // An uncertain lookup must not turn into a new authorization request.
@@ -513,23 +582,26 @@ export class XmtpTransport implements Transport {
         await checkWallet();
         // Startup can fail after opening the database but before listing inboxes.
         // Reuse that client; a second build would compete for its OPFS lock.
+        this.startupReport.phase = 'store';
         const existing = sharedXmtp?.address.toLowerCase() === this.myAddress
           ? sharedXmtp.client
           : await sdk.Client.build(
             await this.identifier(),
             xmtpOptions(sdk) as Parameters<typeof sdk.Client.build>[1],
           );
+        this.noteStartupClient(existing); this.startupReport.phase = 'registration';
         let adopted = false;
         try {
           const registered = await existing.isRegistered();
           if (typeof registered !== "boolean") throw new Error("Unable to confirm the saved messaging installation.");
           await checkWallet();
           if (registered) {
+            this.startupReport.phase = 'inbox';
             await this.adopt(existing);
             if (this.client !== existing) throw new Error("The saved messaging installation is unavailable. Check its recovery status before trying again.");
             await checkWallet();
-            sharedXmtp = { address: this.myAddress, client: existing };
-            markEnabled(this.myAddress);
+            trackOpenClient(existing); sharedXmtp = { address: this.myAddress, client: existing };
+            markEnabled(this.myAddress); this.startupReport.outcome = 'ready';
             adopted = true;
             return;
           }
@@ -537,10 +609,11 @@ export class XmtpTransport implements Transport {
           if (!adopted) {
             if (this.client === existing) this.client = null;
             if (sharedXmtp?.client === existing) sharedXmtp = null;
-            existing.close();
+            releaseClient(existing);
           }
         }
       }
+      if (opts?.resumeOnly) throw new Error('No registered saved messaging session could be reopened. Existing devices were kept.');
       // Recovery path: if the inbox is at XMTP's 10-installation limit, revoke the
       // existing installations (one wallet signature) so a fresh one can register.
       if (!provider) throw new Error("Connect a wallet to enable XMTP.");
@@ -552,15 +625,20 @@ export class XmtpTransport implements Transport {
         if (devices.installations.length >= 10) throw new Error("Messaging installation limit reached.");
       }
       if (this.provider !== provider) throw new Error("Wallet changed. Reconnect the selected wallet before enabling messaging.");
+      this.startupReport.phase = 'registration';
       const client = await sdk.Client.create(
         makeInjectedSigner(provider, this.myAddress, sdk.IdentifierKind.Ethereum),
         xmtpOptions(sdk) as Parameters<typeof sdk.Client.create>[1],
       );
-      sharedXmtp = { address: this.myAddress, client };
-      markEnabled(this.myAddress);
+      trackOpenClient(client); sharedXmtp = { address: this.myAddress, client };
+      markEnabled(this.myAddress); this.noteStartupClient(client); this.startupReport.phase = 'inbox';
       await this.adopt(client);
+      this.assertAdopted(client);
+      this.startupReport.outcome = 'ready';
     } catch (error) {
+      this.noteStartupFailure(error);
       this.status = "error";
+      if (opts?.resumeOnly) throw new Error('No registered saved messaging session could be reopened. Existing devices were kept.');
       // Surface the 10/10 case as a typed, actionable error so the UI can keep offering
       // a one-click "revoke old sessions & enable" instead of dead-ending. We must keep the
       // code on the revokeStale retry too: if the revoke cleared nothing (or hasn't
@@ -603,7 +681,7 @@ export class XmtpTransport implements Transport {
       const inboxId = await sdk.getInboxIdForIdentifier(backend, await this.identifier());
       if (!inboxId) {
         await checkWallet();
-        return { inboxId: null, localInstallationId: null, installations: [] };
+        return { inboxId: null, localInstallationId: null, installations: [], ...(this.startupReport ? { startup: { ...this.startupReport } } : {}) };
       }
       if (!/^[a-f0-9]{64}$/.test(inboxId)) throw new Error("Invalid messaging device metadata.");
       await checkWallet();
@@ -635,7 +713,7 @@ export class XmtpTransport implements Transport {
         const id = client?.installationId;
         if (typeof id === "string" && /^[a-f0-9]{64}$/.test(id)) localInstallationId = id;
       } catch { /* A closed or unavailable local client gives no identity evidence. */ }
-      return { inboxId, localInstallationId, installations };
+      return { inboxId, localInstallationId, installations, ...(this.startupReport ? { startup: { ...this.startupReport } } : {}) };
     };
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {

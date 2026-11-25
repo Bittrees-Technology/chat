@@ -62,6 +62,7 @@ const keys: Record<string, string> = {
   "XMTP messaging is not enabled yet.": "status.xmtpDisabled",
   "XMTP inbox is not ready yet.": "status.inboxNotReady",
   "Connect a wallet to enable XMTP.": "status.xmtpConnect",
+  "No registered saved messaging session could be reopened. Existing devices were kept.": "settings.resumeUnavailable",
   "Connect a wallet to revoke installations.": "status.revokeInstallations",
   "Wallet changed. Reopen messaging recovery.": "status.recoveryWalletChanged",
   "No verified messaging inbox. Reopen messaging recovery.": "status.recoveryInboxUnverified",

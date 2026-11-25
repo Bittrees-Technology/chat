@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { MessagingDevices } from '@app/transport';
 import { useI18n } from '../i18n';
 
-export function MessagingDevicesView({ inspect, revoke, initiallyOpen = false }: {
-  inspect: () => Promise<MessagingDevices>; revoke?: (id: string) => Promise<void>; initiallyOpen?: boolean;
+export function MessagingDevicesView({ inspect, revoke, resume, initiallyOpen = false }: {
+  inspect: () => Promise<MessagingDevices>; revoke?: (id: string) => Promise<void>; resume?: () => Promise<void>; initiallyOpen?: boolean;
 }) {
   const { t, lang } = useI18n();
   const [result, setResult] = useState<MessagingDevices | null>(null);
@@ -18,6 +18,16 @@ export function MessagingDevicesView({ inspect, revoke, initiallyOpen = false }:
     pending.current = true; setBusy(true); setFailed(false); setResult(null); setSelection(null); setAcknowledged(false);
     try { const value = await inspect(); if (active.current) setResult(value); }
     catch { if (active.current) setFailed(true); }
+    finally { pending.current = false; if (active.current) setBusy(false); }
+  };
+  const retrySaved = async () => {
+    if (pending.current || !resume) return;
+    pending.current = true; setBusy(true); setFailed(false); setSelection(null); setAcknowledged(false);
+    try {
+      await resume();
+      if (!active.current) return;
+      const next = await inspect(); if (active.current) setResult(next);
+    } catch { if (active.current) setFailed(true); }
     finally { pending.current = false; if (active.current) setBusy(false); }
   };
   const remove = async () => {
@@ -42,6 +52,20 @@ export function MessagingDevicesView({ inspect, revoke, initiallyOpen = false }:
     {failed && <p role="alert">{t('settings.devicesFailed')}</p>}
     {removalState !== 'none' && <p role={removalState === 'success' ? 'status' : 'alert'}>{t(removalState === 'success' ? 'settings.deviceRemoved' : 'settings.deviceRemovalUnconfirmed')}</p>}
     {result && <div>
+      {resume && (!result.localInstallationId || result.startup?.outcome !== 'ready') && <>
+        <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { void retrySaved(); }}>{t('settings.resumeSaved')}</button>
+        <p className="muted">{t('settings.resumeSavedHelp')}</p>
+      </>}
+      {result.startup && <details>
+        <summary>{t('settings.startupCheck')}</summary>
+        <p>{t('settings.startupPreference')} {t(result.startup.remembered ? 'settings.startupPresent' : 'settings.startupMissing')}</p>
+        <p>{t(`settings.startupOutcome.${result.startup.outcome}`)}</p>
+        {result.startup.phase && <p>{t(`settings.startupPhase.${result.startup.phase}`)}</p>}
+        {result.startup.reason && <p>{t(`settings.startupReason.${result.startup.reason}`)}</p>}
+        {result.startup.installationId && <p>{t('settings.startupDevice')} <code style={{ overflowWrap: 'anywhere' }}>{result.startup.installationId}</code></p>}
+        {result.startup.inboxId && <p>{t('settings.startupInbox')} <code style={{ overflowWrap: 'anywhere' }}>{result.startup.inboxId}</code></p>}
+        {result.inboxId && <p>{t('settings.networkInbox')} <code style={{ overflowWrap: 'anywhere' }}>{result.inboxId}</code></p>}
+      </details>}
       {!result.inboxId ? <p role="status">{t('settings.devicesNoInbox')}</p> : <>
         <p role="status">{t('settings.devicesCount', undefined, { count: result.installations.length })}</p>
         <p className="muted">{t('settings.devicesDates')}</p>
