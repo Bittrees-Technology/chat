@@ -67,6 +67,7 @@ const keys: Record<string, string> = {
   "No verified messaging inbox. Reopen messaging recovery.": "status.recoveryInboxUnverified",
   "Messaging inbox binding changed. Reopen messaging recovery.": "status.recoveryInboxChanged",
   "Device recovery was submitted. Check messaging devices before trying again.": "status.recoverySubmitted",
+  "Your messaging inbox already has 10 registered sessions. Review messaging devices and keep any device with your history connected.": "settings.devicesLimitHelp",
   "Room descriptions must be 10,000 characters or fewer.": "thread.descriptionLimit",
   "Room configuration is invalid or unsupported. Ask an administrator to repair it.": "thread.invalidRoom",
   "This room uses an unsupported production gate.": "status.unsupportedGate",

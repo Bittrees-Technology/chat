@@ -1,3 +1,4 @@
+import { deviceRemovalRecord } from './deviceRemoval.js';
 import { fetchRecoveryWelcome, validateRecoverySelection } from "./welcomeRecovery.js";
 import { DisplayWalletChoices, type DisplayWalletReader } from './displayWalletChoices.js';
 import { InboxIdentities, inboxWallets, linkedInboxWallets, messageInboxIds } from "./inboxIdentities.js";
@@ -569,7 +570,7 @@ export class XmtpTransport implements Transport {
         const friendly = new Error(
           opts?.revokeStale
             ? "We revoked the old sessions, but XMTP still reports this inbox at its 10-device limit. Revocations can take a few seconds to propagate — wait a moment and try again."
-            : "Your messaging inbox already has the maximum 10 devices/sessions registered. Revoke the old ones to enable messaging on this device.",
+            : "Your messaging inbox already has 10 registered sessions. Review messaging devices and keep any device with your history connected.",
         ) as Error & { code?: string };
         friendly.code = "installation_limit";
         throw friendly;
@@ -644,9 +645,21 @@ export class XmtpTransport implements Transport {
     } finally { expired = true; clearTimeout(timer); }
   }
 
+  /** Explicitly remove one reviewed installation. Never registers a replacement. */
+  async revokeMessagingDevice(installationId: string): Promise<void> {
+    if (!/^[a-f0-9]{64}$/.test(installationId)) throw new Error("Invalid messaging device selection.");
+    const locks = globalThis.navigator?.locks;
+    if (!locks) throw new Error("This browser cannot safely coordinate device removal.");
+    await locks.request(`chat.device-removal:${xmtpEnv()}:${this.myAddress}`, { ifAvailable: true }, async lock => {
+      if (!lock) throw new Error("Device removal is already in progress in another tab.");
+      const sdk = await this.loadSdk();
+      await this.revokeStaleInstallations(sdk, installationId);
+    });
+  }
+
   /** Revoke every installation currently registered on this inbox (no client needed —
    *  uses the static revoke path, which works even at the 10/10 limit). */
-  private async revokeStaleInstallations(sdk: Sdk): Promise<number> {
+  private async revokeStaleInstallations(sdk: Sdk, selectedId?: string): Promise<number> {
     if (!this.provider) throw new Error("Connect a wallet to revoke installations.");
     const provider = this.provider;
     const checkWallet = async () => {
@@ -671,23 +684,52 @@ export class XmtpTransport implements Transport {
       await checkWallet();
     };
     await checkBinding();
-    const ids = devices.installations.map(device => Uint8Array.from(
+    const removal = selectedId ? deviceRemovalRecord(`${xmtpEnv()}:${this.myAddress}:${inboxId}`) : null;
+    if (selectedId) {
+      removal!.reconcile(devices.installations.map(device => device.id));
+      removal!.ready();
+      if (devices.localInstallationId === selectedId) throw new Error("Keep the current messaging device connected.");
+      if (!devices.installations.some(device => device.id === selectedId)) throw new Error("The selected messaging device is no longer registered. Refresh devices.");
+    }
+    const ids = devices.installations.filter(device => !selectedId || device.id === selectedId).map(device => Uint8Array.from(
       device.id.match(/../g)!, byte => parseInt(byte, 16),
     ));
     if (!ids.length) return 0;
     const signer = makeInjectedSigner(provider, this.myAddress, sdk.IdentifierKind.Ethereum);
-    await sdk.Client.revokeInstallations({ ...signer, signMessage: async (message: string) => {
+    let submitted = false;
+    try {
+      await sdk.Client.revokeInstallations({ ...signer, signMessage: async (message: string) => {
       await checkBinding();
       const signature = await signer.signMessage(message);
       // Wallet approval can outlive a profile/account change. Do not submit that
       // signature or continue registration for a now-different binding.
       await checkBinding();
+      // Record only after wallet approval, before handing the signature to the SDK.
+      // Cancellation leaves no submission record; uncertainty never causes a replay.
+      if (selectedId) {
+        const current = await this.inspectMessagingDevices();
+        if (current.inboxId !== inboxId || current.localInstallationId === selectedId
+          || !current.installations.some(device => device.id === selectedId)) throw new Error("Messaging device selection changed. Refresh devices.");
+        removal!.reserve(selectedId); submitted = true;
+      }
       return signature;
     } }, inboxId, ids, backend);
+    } catch (error) {
+      if (submitted) throw new Error("Device removal is unconfirmed. Refresh messaging devices before trying again.");
+      throw error;
+    }
     // Submission may finish after the active wallet changes. Preserve that
     // outcome for inspection rather than registering a replacement immediately.
     try { await checkBinding(); }
     catch { throw new Error("Device recovery was submitted. Check messaging devices before trying again."); }
+    if (selectedId) {
+      try {
+        const refreshed = await this.inspectMessagingDevices();
+        if (refreshed.inboxId !== inboxId) throw new Error("Messaging inbox changed.");
+        removal!.reconcile(refreshed.installations.map(device => device.id));
+        if (refreshed.installations.some(device => device.id === selectedId)) throw new Error("Device remains registered.");
+      } catch { throw new Error("Device removal is unconfirmed. Refresh messaging devices before trying again."); }
+    }
     return ids.length;
   }
 

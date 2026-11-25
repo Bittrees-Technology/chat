@@ -96,3 +96,76 @@ it('preserves a submitted revocation without registering after a later wallet ch
   await expect(f.transport.enable({ revokeStale: true })).rejects.toThrow('Device recovery was submitted');
   expect(f.submitted).toHaveBeenCalledOnce(); expect(f.sdk.Client.create).not.toHaveBeenCalled();
 });
+
+function singleDeviceStorage() {
+  const data = new Map<string, string>();
+  vi.stubGlobal('localStorage', { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => data.set(key, value) });
+  vi.stubGlobal('navigator', { locks: { request: vi.fn(async (_key: string, _options: unknown, run: (lock: object | null) => Promise<void>) => run({})) } });
+  return data;
+}
+it('removes exactly the selected installation and never registers or revokes another', async () => {
+  singleDeviceStorage(); const f = await setup(); const selected = '02'.repeat(32);
+  f.sdk.Client.revokeInstallations.mockImplementationOnce(async (signer, _inbox, ids: Uint8Array[]) => {
+    await signer.signMessage('Synthetic selected-device removal'); f.submitted();
+    f.state.installations = f.state.installations.filter((i: any) => i.id !== selected);
+  });
+  await f.transport.revokeMessagingDevice(selected);
+  expect(f.sdk.Client.revokeInstallations.mock.calls[0]?.slice(1, 3)).toEqual([inbox, [new Uint8Array(32).fill(2)]]);
+  expect(f.state.installations.map((i: any) => i.id)).toEqual(['01'.repeat(32)]);
+  expect(f.sdk.Client.create).not.toHaveBeenCalled(); expect(f.sdk.Client.build).not.toHaveBeenCalled();
+});
+it.each(['invalid', 'missing', 'current'])('holds an %s single-device selection before signing', async reason => {
+  singleDeviceStorage(); const f = await setup();
+  if (reason === 'current') Object.assign(f.transport, { client: { installationId: '01'.repeat(32) } });
+  await expect(f.transport.revokeMessagingDevice(reason === 'invalid' ? 'bad' : reason === 'missing' ? '03'.repeat(32) : '01'.repeat(32))).rejects.toThrow();
+  noAuthorization(f);
+});
+it('holds a submitted but uncertain removal across a fresh transport without replaying it', async () => {
+  const data = singleDeviceStorage(); const f = await setup();
+  f.sdk.Client.revokeInstallations.mockImplementationOnce(async signer => { await signer.signMessage('Synthetic uncertain removal'); throw new Error('Network uncertainty'); });
+  await expect(f.transport.revokeMessagingDevice('02'.repeat(32))).rejects.toThrow('unconfirmed');
+  expect(JSON.parse([...data.values()][0]).pending.id).toBe('02'.repeat(32));
+  const next = await setup();
+  await expect(next.transport.revokeMessagingDevice('01'.repeat(32))).rejects.toThrow('unconfirmed');
+  noAuthorization(next);
+});
+it('does not leave a submission record or mutate access when wallet approval is cancelled', async () => {
+  const data = singleDeviceStorage(); const f = await setup();
+  f.provider.request.mockImplementation(async ({ method }) => { if (method === 'eth_accounts') return [wallet]; throw new Error('Wallet rejected request'); });
+  await expect(f.transport.revokeMessagingDevice('02'.repeat(32))).rejects.toThrow('rejected');
+  expect(data.size).toBe(0); expect(f.submitted).not.toHaveBeenCalled();
+});
+it('withholds an approved signature when durable intent cannot be saved', async () => {
+  singleDeviceStorage(); const f = await setup();
+  vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => { throw new Error('Quota'); } });
+  await expect(f.transport.revokeMessagingDevice('02'.repeat(32))).rejects.toThrow('unconfirmed');
+  expect(f.submitted).not.toHaveBeenCalled(); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+});
+it('reconciles an uncertain removal only after its public installation disappears', async () => {
+  const data = singleDeviceStorage(); const f = await setup();
+  f.sdk.Client.revokeInstallations.mockImplementationOnce(async signer => { await signer.signMessage('Synthetic uncertain removal'); throw new Error('Network uncertainty'); });
+  await expect(f.transport.revokeMessagingDevice('02'.repeat(32))).rejects.toThrow('unconfirmed');
+  f.state.installations = [f.state.installations[0]];
+  await expect(f.transport.revokeMessagingDevice('02'.repeat(32))).rejects.toThrow('no longer registered');
+  const record = JSON.parse([...data.values()][0]); expect(record.pending).toBeNull(); expect(record.completed).toHaveLength(1);
+  expect(f.sdk.Client.revokeInstallations).toHaveBeenCalledOnce();
+});
+it('does not sign or mutate if another tab owns the device-removal lock', async () => {
+  singleDeviceStorage(); const f = await setup();
+  vi.stubGlobal('navigator', { locks: { request: async (_key: string, _options: unknown, run: (lock: null) => Promise<void>) => run(null) } });
+  await expect(f.transport.revokeMessagingDevice('02'.repeat(32))).rejects.toThrow('another tab'); noAuthorization(f);
+});
+it('fails closed when safe cross-tab coordination is unavailable', async () => {
+  singleDeviceStorage(); const f = await setup(); vi.stubGlobal('navigator', {});
+  await expect(f.transport.revokeMessagingDevice('02'.repeat(32))).rejects.toThrow('cannot safely coordinate'); noAuthorization(f);
+});
+
+it.each(['current', 'gone'])('withholds the signature if the selected device becomes %s during approval', async change => {
+  const data = singleDeviceStorage(); const f = await setup();
+  f.onSign(() => {
+    if (change === 'current') Object.assign(f.transport, { client: { installationId: '02'.repeat(32) } });
+    else f.state.installations = [f.state.installations[0]];
+  });
+  await expect(f.transport.revokeMessagingDevice('02'.repeat(32))).rejects.toThrow('selection changed');
+  expect(f.submitted).not.toHaveBeenCalled(); expect(data.size).toBe(0);
+});

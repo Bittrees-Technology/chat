@@ -916,5 +916,15 @@
   "settings.deviceThisBrowser": "This browser",
   "settings.deviceCreated": "Created:",
   "settings.deviceDateUnknown": "Date unavailable",
-  "settings.deviceId": "Device ID"
+  "settings.deviceId": "Device ID",
+  "settings.devicesReview": "Review messaging devices",
+  "settings.devicesLimitHelp": "Your messaging inbox already has 10 registered sessions. Review messaging devices and keep any device with your history connected.",
+  "settings.deviceRemovalHelp": "To make room, choose one device you know is no longer needed. Chat cannot tell which device holds your older messages. The current open messaging device cannot be removed here.",
+  "settings.deviceRemoveReview": "Review removal",
+  "settings.deviceRemoveTitle": "Remove one messaging device",
+  "settings.deviceRemoveEffect": "This ends messaging access for only the device ID below and requires a wallet signature. It cannot restore or transfer its message history. Keep other devices connected until your history is verified.",
+  "settings.deviceRemoveAcknowledge": "I have checked that this device is safe to remove and kept any device with my history.",
+  "settings.deviceRemoveConfirm": "Sign to remove this device",
+  "settings.deviceRemoved": "The selected device is removed. Check the refreshed list, then enable messaging when ready. No new session was registered.",
+  "settings.deviceRemovalUnconfirmed": "Device removal could not be confirmed. Refresh devices before doing anything else. No new session was registered."
 }

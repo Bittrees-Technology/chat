@@ -4,10 +4,10 @@ import { expect, it, vi } from 'vitest';
 import { MessagingDevicesView } from '../src/views/MessagingDevices';
 import { I18nProvider } from '../src/i18n';
 const device = 'ab'.repeat(32);
-function mount(inspect: () => Promise<any>) {
+function mount(inspect: () => Promise<any>, revoke?: (id: string) => Promise<void>) {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   const host = document.createElement('div'); const root = createRoot(host);
-  return { host, root, render: (key = 'a') => root.render(React.createElement(I18nProvider, null, React.createElement(MessagingDevicesView, { key, inspect, initiallyOpen: true }))) };
+  return { host, root, render: (key = 'a') => root.render(React.createElement(I18nProvider, null, React.createElement(MessagingDevicesView, { key, inspect, revoke, initiallyOpen: true }))) };
 }
 it('reads only on an explicit click, coalesces clicks, and discards a result after changing wallet scope', async () => {
   let finish!: (value: any) => void;
@@ -62,5 +62,50 @@ it('explains an unopened local session without declaring its history lost', asyn
     expect(f.host.textContent).toContain('Registered devices: 10');
     expect(f.host.textContent).toContain('try reopening the saved session');
     expect(f.host.textContent).toContain('does not mean your history was deleted');
+  } finally { await act(async () => f.root.unmount()); }
+});
+
+it('requires review of one full device ID and explicit acknowledgment before removal', async () => {
+  const other = 'ef'.repeat(32);
+  const inspect = vi.fn(async () => ({ inboxId: 'cd'.repeat(32), localInstallationId: device, installations: [{ id: device, createdAtMs: null }, { id: other, createdAtMs: null }] }));
+  const revoke = vi.fn(async (id: string) => {
+    expect(id).toBe(other);
+    inspect.mockResolvedValue({ inboxId: 'cd'.repeat(32), localInstallationId: device, installations: [{ id: device, createdAtMs: null }] });
+  });
+  const f = mount(inspect, revoke);
+  try {
+    await act(async () => f.render()); await act(async () => f.host.querySelector('button')!.click());
+    const reviews = [...f.host.querySelectorAll('button')].filter(b => b.textContent === 'Review removal');
+    expect(reviews[0].disabled).toBe(true); expect(reviews[1].disabled).toBe(false);
+    await act(async () => reviews[1].click());
+    const fieldset = f.host.querySelector('fieldset')!;
+    expect(fieldset.textContent).toContain(other); expect(fieldset.textContent).toContain('only the device ID');
+    const confirm = [...fieldset.querySelectorAll('button')].find(b => b.textContent === 'Sign to remove this device')!;
+    expect(confirm.disabled).toBe(true); await act(async () => confirm.click()); expect(revoke).not.toHaveBeenCalled();
+    await act(async () => fieldset.querySelector('input')!.click());
+    await act(async () => { confirm.click(); confirm.click(); });
+    expect(revoke).toHaveBeenCalledExactlyOnceWith(other);
+    expect(f.host.textContent).toContain('Registered devices: 1'); expect(f.host.textContent).toContain(device);
+    expect(f.host.textContent).toContain('No new session was registered');
+  } finally { await act(async () => f.root.unmount()); }
+});
+it('does not remove anything when a review is cancelled', async () => {
+  const revoke = vi.fn(); const f = mount(vi.fn(async () => ({ inboxId: 'cd'.repeat(32), localInstallationId: null, installations: [{ id: device, createdAtMs: null }] })), revoke);
+  try {
+    await act(async () => f.render()); await act(async () => f.host.querySelector('button')!.click());
+    await act(async () => [...f.host.querySelectorAll('button')].find(b => b.textContent === 'Review removal')!.click());
+    await act(async () => [...f.host.querySelectorAll('button')].find(b => b.textContent === 'Cancel')!.click());
+    expect(f.host.querySelector('fieldset')).toBeNull(); expect(revoke).not.toHaveBeenCalled();
+  } finally { await act(async () => f.root.unmount()); }
+});
+it('hides uncertain provider details and clears stale device choices after removal fails', async () => {
+  const f = mount(vi.fn(async () => ({ inboxId: 'cd'.repeat(32), localInstallationId: null, installations: [{ id: device, createdAtMs: null }] })), vi.fn(async () => { throw new Error('PRIVATE_PROVIDER_DETAILS'); }));
+  try {
+    await act(async () => f.render()); await act(async () => f.host.querySelector('button')!.click());
+    await act(async () => [...f.host.querySelectorAll('button')].find(b => b.textContent === 'Review removal')!.click());
+    await act(async () => f.host.querySelector('input')!.click());
+    await act(async () => [...f.host.querySelectorAll('button')].find(b => b.textContent === 'Sign to remove this device')!.click());
+    expect(f.host.textContent).toContain('Device removal could not be confirmed');
+    expect(f.host.textContent).not.toContain('PRIVATE_PROVIDER'); expect(f.host.querySelector('fieldset')).toBeNull();
   } finally { await act(async () => f.root.unmount()); }
 });
