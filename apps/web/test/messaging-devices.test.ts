@@ -4,10 +4,10 @@ import { expect, it, vi } from 'vitest';
 import { MessagingDevicesView } from '../src/views/MessagingDevices';
 import { I18nProvider } from '../src/i18n';
 const device = 'ab'.repeat(32);
-function mount(inspect: () => Promise<any>, revoke?: (id: string) => Promise<void>) {
+function mount(inspect: () => Promise<any>, revoke?: (id: string) => Promise<void>, resume?: () => Promise<void>) {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   const host = document.createElement('div'); const root = createRoot(host);
-  return { host, root, render: (key = 'a') => root.render(React.createElement(I18nProvider, null, React.createElement(MessagingDevicesView, { key, inspect, revoke, initiallyOpen: true }))) };
+  return { host, root, render: (key = 'a') => root.render(React.createElement(I18nProvider, null, React.createElement(MessagingDevicesView, { key, inspect, revoke, resume, initiallyOpen: true }))) };
 }
 it('reads only on an explicit click, coalesces clicks, and discards a result after changing wallet scope', async () => {
   let finish!: (value: any) => void;
@@ -107,5 +107,18 @@ it('hides uncertain provider details and clears stale device choices after remov
     await act(async () => [...f.host.querySelectorAll('button')].find(b => b.textContent === 'Sign to remove this device')!.click());
     expect(f.host.textContent).toContain('Device removal could not be confirmed');
     expect(f.host.textContent).not.toContain('PRIVATE_PROVIDER'); expect(f.host.querySelector('fieldset')).toBeNull();
+  } finally { await act(async () => f.root.unmount()); }
+});
+
+it('offers a saved-only retry and shows bounded startup evidence without automatic registration', async () => {
+  const inspect = vi.fn(async () => ({ inboxId: 'cd'.repeat(32), localInstallationId: null, installations: [], startup: { remembered: false, outcome: 'failed', phase: 'store', reason: 'storage', installationId: device } }));
+  const resume = vi.fn(async () => {}), f = mount(inspect, undefined, resume);
+  try {
+    await act(async () => f.render()); expect(resume).not.toHaveBeenCalled();
+    await act(async () => f.host.querySelector('button')!.click());
+    expect(f.host.textContent).toContain('Saved session check'); expect(f.host.textContent).toContain('not found');
+    expect(f.host.textContent).toContain('Storage was unavailable');
+    await act(async () => [...f.host.querySelectorAll('button')].find(b => b.textContent === 'Retry saved session')!.click());
+    expect(resume).toHaveBeenCalledOnce(); expect(inspect).toHaveBeenCalledTimes(2);
   } finally { await act(async () => f.root.unmount()); }
 });

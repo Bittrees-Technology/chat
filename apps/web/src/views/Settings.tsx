@@ -289,7 +289,7 @@ export function Settings(
         </div>
       </section>
 
-      {transportId === 'xmtp' && mode === 'wallet' && <MessagingDevicesView key={`devices:${identity.address.toLowerCase()}:${activeOrgId}`} inspect={inspectMessagingDevices} revoke={revokeMessagingDevice} initiallyOpen={transportNeedsRevoke} />}
+      {transportId === 'xmtp' && mode === 'wallet' && <MessagingDevicesView key={`devices:${identity.address.toLowerCase()}:${activeOrgId}`} inspect={inspectMessagingDevices} revoke={revokeMessagingDevice} resume={() => enableMessaging({ resumeOnly: true })} initiallyOpen={transportNeedsRevoke} />}
       {transportId === 'xmtp' && mode === 'wallet' && transportStatus === 'ready' &&
         <HistoryRecovery key={`history:${identity.address.toLowerCase()}:${activeOrgId}`} request={requestHistorySync} />}
       {transportId === 'xmtp' && transportStatus === 'ready' && <MessagingDiagnosticsView key={`diagnostics:${identity.address.toLowerCase()}:${activeOrgId}`} inspect={inspectMessaging} />}
