@@ -106,9 +106,9 @@
   "settings.receiptTitle": "Confirmaciones de lectura (por defecto)",
   "settings.receiptHelp": "Cuando está activado, Chat envía confirmaciones de lectura en los chats directos. Desactívalo para dejar de enviarlas desde este dispositivo. Las confirmaciones ya enviadas no se pueden retirar.",
   "settings.receiptLabel": "Confirmaciones de lectura por defecto",
-  "settings.syncTitle": "Sincronizar entre dispositivos",
-  "settings.syncActive": "Activada durante esta sesión del navegador, hasta 24 horas. El servicio de sincronización almacena las preferencias cifradas.",
-  "settings.syncPaused": "En pausa tras reiniciar. Vuelve a activarla con tu cartera para reanudar la sincronización cifrada.",
+  "settings.syncTitle": "Sincronizar preferencias",
+  "settings.syncActive": "Activada para esta sesión del navegador, durante un máximo de 24 horas. Al recargar se pausa la sincronización. El servicio guarda las preferencias cifradas.",
+  "settings.syncPaused": "En pausa tras recargar o reiniciar. Reactívala con tu cartera para reanudar la sincronización cifrada.",
   "settings.syncOff": "Desactivada. Las preferencias permanecen en este dispositivo. Actívala con dos firmas sin gas; la clave del dispositivo permanece en memoria.",
   "settings.signing": "Firmando...",
   "settings.turnOff": "Desactivar",
@@ -964,5 +964,9 @@
   "settings.publicIdentity": "Nombre público y carteras vinculadas",
   "settings.technicalDetails": "Detalles técnicos y consulta de direcciones",
   "settings.administrationLink": "Administración del proyecto y roles",
-  "settings.connection": "Conexión"
+  "settings.connection": "Conexión",
+  "settings.syncScope": "Sincroniza las confirmaciones de lectura y los elementos bloqueados o guardados anteriores. El historial de conversaciones, los contactos locales, las notas y las secciones opcionales se gestionan por separado.",
+  "settings.syncLastVerified": "Última sincronización verificada:",
+  "settings.syncNotVerified": "No se ha verificado ninguna sincronización en esta sesión del navegador.",
+  "settings.syncFormatMismatch": "Este dispositivo tiene datos de sincronización cifrados más recientes que los devueltos por el servicio. La sincronización está en pausa; se han conservado los datos existentes."
 }

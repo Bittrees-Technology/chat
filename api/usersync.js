@@ -1,4 +1,4 @@
-import { parseSyncStorage, syncPayloadVersion, SYNC_PAYLOAD_VERSIONS } from "../server/sync-format.js";
+import { parseSyncStorage, syncPayloadVersion, syncSigningAddress, SYNC_PAYLOAD_VERSIONS } from "../server/sync-format.js";
 import { recoverMessageAddress, keccak256, stringToHex } from "viem";
 import { SYNC_AUTH_MAX_AGE, syncGrantMessage, syncWriteMessage, syncRevokeDeviceMessage, syncRevokeAllMessage } from "../packages/core/src/syncAuth.js";
 import { syncCors } from "../server/sync-cors.js";
@@ -118,6 +118,12 @@ export default async function handler(req, res) {
     catch { return respond(400, { error: "Unsupported or invalid encrypted sync format." }); }
     const [raw, upgradedRaw] = await kv(["MGET", PREFIX + address.toLowerCase(), upgradedKey(address.toLowerCase())]);
     const current = parseSyncStorage(raw, upgradedRaw, address);
+    // Older writers normalized this public hint and stranded wallet-derived keys.
+    // Reject that loss while keeping opaque legacy-v1 writes compatible.
+    const existingKeyAddress = current.blob === null ? null : syncSigningAddress(current.blob, address);
+    if (payloadVersion === 2 && existingKeyAddress && syncSigningAddress(blob, address) !== existingKeyAddress) {
+      return respond(426, { error: "Update Chat to preserve this sync record's wallet-key identity. Existing data was preserved." });
+    }
     const next = JSON.stringify({ blob, updatedAt: now, revision: expectedRevision + 1, minPayloadVersion: Math.max(current.minPayloadVersion, payloadVersion) });
     const [accepted, revision] = await kv(["EVAL", SYNC_CAS, "4", PREFIX + address.toLowerCase(), epochKey(address.toLowerCase()), revokedKey(authorization), upgradedKey(address.toLowerCase()),
       String(expectedRevision), next, String(authorization.epoch), String(authorization.expiresAt), raw ?? "", String(current.revision), String(current.minPayloadVersion), String(payloadVersion), upgradedRaw ?? ""]);

@@ -2,11 +2,11 @@ import { useSectionPreferences } from "./featurePreferences";
 import type { MessagingDiagnostics, MessagingDevices } from '@app/transport';
 import { discoverBrowserWallets, type BrowserWallet } from './browserWallets';
 import { prepareSyncMigration, SyncMigrationChoiceError, type SyncMigrationChoice } from './syncMigration';
-import { readVersionedSync, decryptVersionedSync, authorizeVersionedSync, writeVersionedSync, VersionedSyncError } from './versionedSyncTransport';
+import { readVersionedSync, decryptVersionedSync, authorizeVersionedSync, writeVersionedSync, syncKeyAddress, VersionedSyncError } from './versionedSyncTransport';
 import { encryptSyncPayloadV2 } from './versionedSyncCipher';
 import { editSyncPayloadV2, mergeSyncPayloadV2, syncPayloadV2View, upgradeSyncPayloadV1, type SyncPayloadV2, type SyncMessage } from './versionedSync';
 import { readDisplayWallets, DISPLAY_WALLET_CHANGED } from './displayWallets';
-import {decryptSettingsPayload,SyncReadError,SYNC_READ_PAUSED} from "./syncPayload";
+import {decryptSettingsPayload,syncKeyMessage,SyncReadError,SYNC_READ_PAUSED} from "./syncPayload";
 import { parseSettingsRaw, loadSettings, saveSettings, saveSyncedSettings, withSettingsLock, assertNoRecoveryPending, recoveryMarkerKey, SettingsStorageError, SETTINGS_STORAGE_ERROR, type SettingsPrefs } from "./settingsStorage";
 import { receiptOverride, receiptPreferenceKey } from "./receiptPreferences";
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -455,6 +455,7 @@ interface SettingsSyncState {
   error?: string;
   walletAddress: string | null;
   encryptedAt: number | null;
+  lastConfirmedAt?: number;
   hasSessionKey: boolean;
   isEncrypting: boolean;
   migrationChoiceRequired?: boolean;
@@ -512,7 +513,7 @@ async function deriveSyncKey(signature: string, address: string): Promise<Crypto
   );
 }
 
-async function requestWalletSyncKey(preferredAddress?: string): Promise<{ address: string; key: CryptoKey }> {
+async function requestWalletSyncKey(preferredAddress?: string, keyAddress?: string): Promise<{ address: string; key: CryptoKey }> {
   const ethereum = getActiveProvider();
   if (!ethereum) throw new Error("No wallet provider is connected. Connect a wallet, then try again.");
   const accounts = preferredAddress
@@ -524,7 +525,8 @@ async function requestWalletSyncKey(preferredAddress?: string): Promise<{ addres
     ? preferredAddress
     : account;
   if (!address) throw new Error("Wallet did not return an account.");
-  const message = `Chirpy: enable encrypted sync\nAddress: ${address}\nThis is a gas-free signature used only to derive your sync key.`;
+  if (keyAddress && keyAddress.toLowerCase() !== address.toLowerCase()) throw new SyncReadError();
+  const message = syncKeyMessage(keyAddress ?? address);
   const signature = await ethereum.request({
     method: "personal_sign",
     params: [bytesToHex(textEncoder.encode(message)), address],
@@ -560,6 +562,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
   const rawRef = useRef(initial.raw), prefsRef = useRef(initial.prefs), timeRef = useRef(initial.updatedAt);
   const payloadRef = useRef<SyncPayloadV2 | undefined>(initial.syncPayload), minimumRef = useRef<1 | 2>(initial.syncMinimum ?? 1);
   const failedRef = useRef(initial.failed || pendingAtLoad), recoveryRef = useRef(pendingAtLoad);
+  const keyAddressRef = useRef<string | null>(null);
   const keyRef = useRef<CryptoKey | null>(null), authRef = useRef<SyncAuthorization | null>(null);
   const providerRef = useRef<ReturnType<typeof getActiveProvider>>(null);
   const revokeRef = useRef<(() => Promise<void>) | null>(null);
@@ -607,7 +610,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
     applyStored(saveSyncedSettings(prefsKey, rawRef.current, payload, minimum));
   }, ensureCurrent);
   const clearAuthority = () => {
-    generation.current++; keyRef.current = null; authRef.current = null; providerRef.current = null; revokeRef.current = null;
+    generation.current++; keyRef.current = null; keyAddressRef.current = null; authRef.current = null; providerRef.current = null; revokeRef.current = null;
     reschedule.current = false; if (timer.current) clearTimeout(timer.current); timer.current = null;
   };
   const stopLocally = async () => {
@@ -632,7 +635,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
       ensureCurrent();
       let snapshot, remote;
       try { snapshot = await readVersionedSync(address, minimumRef.current, ensureCurrent); remote = await decryptVersionedSync(snapshot, key); }
-      catch { ensureCurrent(); throw new SyncReadError(); }
+      catch (error) { ensureCurrent(); if (error instanceof VersionedSyncError && error.reason === 'downgrade') throw error; throw new SyncReadError(); }
       ensureCurrent();
       if (snapshot.epoch !== authorization.grant.epoch || authorization.grant.expiresAt <= Date.now()) throw new VersionedSyncError('authorization');
       const local = payloadRef.current;
@@ -641,7 +644,9 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
       await assertWallet(providerRef.current, address, ensureCurrent);
       await commit(merged, snapshot.minimum, ensureCurrent); ensureCurrent();
       if (snapshot.minimum === 2 && remote && fingerprint(payloadRef.current) === fingerprint(remote)) return remote;
-      const encrypted = await encryptSyncPayloadV2(payloadRef.current, key, address); ensureCurrent();
+      const keyAddress = keyAddressRef.current;
+      if (!keyAddress || keyAddress.toLowerCase() !== address.toLowerCase()) throw new SyncReadError();
+      const encrypted = await encryptSyncPayloadV2(payloadRef.current, key, keyAddress); ensureCurrent();
       try {
         const latest = await writeVersionedSync(snapshot, authorization, encrypted, ensureCurrent);
         const authoritative = await decryptVersionedSync(latest, key); ensureCurrent();
@@ -671,7 +676,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
       const result = await roundTrip(key, identity.address, authorization, ensureCurrent);
       ensureCurrent(); lastSynced.current = fingerprint(result);
       if (!result.syncAcrossDevices.value) clearAuthority();
-      setSyncState({ walletAddress: identity.address, encryptedAt: result.updatedAt, hasSessionKey: Boolean(keyRef.current), isEncrypting: false });
+      setSyncState({ walletAddress: identity.address, encryptedAt: result.updatedAt, lastConfirmedAt: Date.now(), hasSessionKey: Boolean(keyRef.current), isEncrypting: false });
     } catch (error) {
       if (active.current && generation.current === expectedGeneration) {
         if (revision.current !== expectedRevision && !failedRef.current) reschedule.current = true;
@@ -758,10 +763,13 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
       };
       setSyncState(state => ({ ...state, isEncrypting: true, migrationChoiceRequired: false, error: undefined }));
       try {
-        const provider = getActiveProvider(), { address, key } = await requestWalletSyncKey(identity.address);
-        await assertWallet(provider, address, ensureCurrent);
+        const provider = getActiveProvider();
+        await assertWallet(provider, identity.address, ensureCurrent);
         let snapshot;
-        try { snapshot = await readVersionedSync(address, minimumRef.current, ensureCurrent); } catch { ensureCurrent(); throw new SyncReadError(); }
+        try { snapshot = await readVersionedSync(identity.address, minimumRef.current, ensureCurrent); } catch (error) { ensureCurrent(); if (error instanceof VersionedSyncError && error.reason === 'downgrade') throw error; throw new SyncReadError(); }
+        const keyAddress = syncKeyAddress(snapshot, identity.address);
+        const { address, key } = await requestWalletSyncKey(identity.address, keyAddress);
+        await assertWallet(provider, address, ensureCurrent);
         let remote: SyncPayloadV2 | null;
         try { remote = await decryptVersionedSync(snapshot, key); } catch { throw new SyncReadError(); }
         ensureCurrent();
@@ -784,7 +792,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
         await commit(enabled, snapshot.minimum, ensureCurrent); ensureCurrent();
         const sessionGuard = () => { guardStorage(); if (generation.current !== expectedGeneration || keyRef.current !== key) throw new Error('Sync session changed. Re-enable sync to retry.'); };
         const authorization: SyncAuthorization = { ...granted, sign: async message => { await assertWallet(provider, address, sessionGuard); return granted.sign(message); } };
-        keyRef.current = key; authRef.current = authorization; providerRef.current = provider;
+        keyRef.current = key; keyAddressRef.current = keyAddress; authRef.current = authorization; providerRef.current = provider;
         // Local shutdown invalidates every write immediately. Revocation alone
         // retains a separate short-lived closure so it can still be signed.
         revokeRef.current = () => revokeSyncAuthorization({ ...granted, sign: async message => {
@@ -793,7 +801,7 @@ function WalletSettingsPrefsProvider({ children, scope }: { children: React.Reac
         const result = await roundTrip(key, address, authorization, ensureCurrent); ensureCurrent();
         lastSynced.current = fingerprint(result);
         if (!result.syncAcrossDevices.value) throw new Error('Another device turned sync off. Local data is preserved; enable sync again if intended.');
-        setSyncState({ walletAddress: address, encryptedAt: result.updatedAt, hasSessionKey: true, isEncrypting: false });
+        setSyncState({ walletAddress: address, encryptedAt: result.updatedAt, lastConfirmedAt: Date.now(), hasSessionKey: true, isEncrypting: false });
         return { ok: true, message: 'Encrypted sync is enabled for this browser session, for up to 24 hours.' };
       } catch (error) {
         const message = error instanceof Error ? error.message : SYNC_READ_PAUSED;

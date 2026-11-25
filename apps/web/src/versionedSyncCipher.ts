@@ -34,11 +34,13 @@ export function parseSyncEnvelopeV2(value: unknown, expectedWallet: string): Syn
   return Object.freeze({ ...blob });
 }
 /** Reuses the existing wallet-derived key, but authenticates format, owner and
- * timestamp as v2 additional data. No key material or signature is persisted. */
+ * timestamp as v2 additional data. The public address spelling retains the
+ * original key-signing identity; AAD still binds its canonical Ethereum owner.
+ * No key material or signature is persisted. */
 export async function encryptSyncPayloadV2(value: unknown, key: CryptoKey, address: string): Promise<SyncEnvelopeV2> {
   const payload = parseSyncPayloadV2(value), owner = wallet(address), iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: aad(owner, payload.updatedAt) }, key, encoder.encode(JSON.stringify(payload)));
-  return parseSyncEnvelopeV2({version:1,payloadVersion:2,algorithm:'AES-GCM',kdf:'HKDF-SHA-256',address:owner,iv:encode(iv),ciphertext:encode(new Uint8Array(ciphertext)),updatedAt:payload.updatedAt}, owner);
+  return parseSyncEnvelopeV2({version:1,payloadVersion:2,algorithm:'AES-GCM',kdf:'HKDF-SHA-256',address,iv:encode(iv),ciphertext:encode(new Uint8Array(ciphertext)),updatedAt:payload.updatedAt}, owner);
 }
 export async function decryptSyncPayloadV2(value: unknown, key: CryptoKey, address: string): Promise<SyncPayloadV2> {
   try {

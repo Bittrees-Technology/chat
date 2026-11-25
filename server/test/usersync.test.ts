@@ -149,3 +149,18 @@ it('preserves unknown/corrupt stored records on reads and authenticated writes',
   const key='chirpy:usersync:'+account.address.toLowerCase(),raw='{"blob":"legacy","updatedAt":0,"revision":0,"minPayloadVersion":99}';records.set(key,raw);
   expect((await call({},'GET')).code).toBe(503);expect((await call(await write())).code).toBe(503);expect(records.get(key)).toBe(raw);
 });
+
+it.each([1,2])('preserves signing-address spelling during v%s upgrade or later writes',async version=>{
+ const owner=account.address.toLowerCase(),legacyKey=`chirpy:usersync:${owner}`,upgradedKey=`chirpy:usersync:payload-v2:${owner}`;
+ const envelope={version:1,algorithm:'AES-GCM',kdf:'HKDF-SHA-256',address:account.address,iv:Buffer.alloc(12).toString('base64'),ciphertext:Buffer.alloc(16).toString('base64'),updatedAt:1,...(version===2?{payloadVersion:2}:{})};
+ const original=JSON.stringify({blob:JSON.stringify(envelope),revision:3,updatedAt:1,...(version===2?{minPayloadVersion:2}:{})});
+ records.set(version===2?upgradedKey:legacyKey,original);
+ const before=[...records];
+ const normalized=JSON.stringify({...envelope,payloadVersion:2,address:owner});
+ const denied=await call(await write(normalized,3));expect(denied.code).toBe(426);expect([...records]).toEqual(before);
+ const retained=JSON.stringify({...envelope,payloadVersion:2});
+ expect((await call(await write(retained,3))).code).toBe(200);
+ expect(JSON.parse(JSON.parse(records.get(upgradedKey)!).blob).address).toBe(account.address);
+ expect(JSON.parse(records.get(upgradedKey)!).revision).toBe(4);
+ if(version===1)expect(records.get(legacyKey)).toBe(original);
+});

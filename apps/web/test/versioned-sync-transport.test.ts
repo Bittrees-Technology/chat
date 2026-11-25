@@ -3,7 +3,7 @@ import { webcrypto } from 'node:crypto';
 import { privateKeyToAccount } from 'viem/accounts';
 import { recoverMessageAddress, keccak256, stringToHex } from 'viem';
 import { syncGrantMessage, syncWriteMessage } from '@app/core';
-import { authorizeVersionedSync as authorize, decryptVersionedSync as decrypt, readVersionedSync as read, writeVersionedSync as write } from '../src/versionedSyncTransport';
+import { syncKeyAddress, authorizeVersionedSync as authorize, decryptVersionedSync as decrypt, readVersionedSync as read, writeVersionedSync as write } from '../src/versionedSyncTransport';
 import { encryptSyncPayloadV2 } from '../src/versionedSyncCipher';
 import { editSyncPayloadV2, upgradeSyncPayloadV1 } from '../src/versionedSync';
 const wallet=privateKeyToAccount(('0x'+'12'.repeat(32)) as `0x${string}`),address=wallet.address.toLowerCase();
@@ -111,4 +111,30 @@ it('rejects a grant scoped to another epoch or wallet before signing the write',
  vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(body())));const snapshot=await read(address,1,guard),auth=await authorize(snapshot,message=>wallet.signMessage({message}),guard),sign=vi.spyOn(auth,'sign');
  for(const patch of [{epoch:1},{address:'0x'+'a'.repeat(40)},{service:'https://wrong.test/api/usersync'}])await expect(write(snapshot,{...auth,grant:{...auth.grant,...patch}},env,guard)).rejects.toMatchObject({reason:'authorization'});
  expect(sign).not.toHaveBeenCalled();
+});
+
+it('chooses the original legacy or upgraded signing address, never an unbound wallet hint',async()=>{
+ const original=wallet.address;
+ const fetcher=vi.fn().mockResolvedValue(response(body({blob:JSON.stringify({...env,address:original}),revision:1,minPayloadVersion:2})));
+ vi.stubGlobal('fetch',fetcher);
+ expect(syncKeyAddress(await read(address,1,guard))).toBe(original);
+ fetcher.mockResolvedValue(response(body({blob:JSON.stringify({version:1,address:original}),revision:3})));
+ expect(syncKeyAddress(await read(address,1,guard))).toBe(original);
+ fetcher.mockResolvedValue(response(body()));const empty=await read(address,1,guard);expect(syncKeyAddress(empty)).toBe(address);expect(syncKeyAddress(empty,original)).toBe(original);expect(()=>syncKeyAddress(empty,'0x'+'34'.repeat(20))).toThrow();
+ expect(()=>syncKeyAddress({address,service:service(),epoch:0,revision:0,minimum:1})).toThrow();
+ fetcher.mockResolvedValue(response(body({blob:JSON.stringify({version:1,address:'0x'+'34'.repeat(20)}),revision:3})));
+ const awaited=await read(address,1,guard);
+ expect(()=>syncKeyAddress(awaited)).toThrow();
+});
+it('rejects a write that would erase an existing signing-address spelling before posting',async()=>{
+ const original=wallet.address;
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(body({blob:JSON.stringify({...env,address:original}),revision:1,minPayloadVersion:2}))));
+ const snapshot=await read(address,1,guard);await decrypt(snapshot,key);
+ const auth=await authorize(snapshot,message=>wallet.signMessage({message}),guard);
+ await expect(write(snapshot,auth,env,guard)).rejects.toMatchObject({reason:'unreadable'});
+ expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+});
+it('reports an explicit format downgrade without decrypting or signing',async()=>{
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(body())));
+ await expect(read(address,2,guard)).rejects.toMatchObject({reason:'downgrade'});
 });

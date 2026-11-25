@@ -273,6 +273,10 @@ export function Settings(
           <div>
             <div className="pref-title">{t("settings.syncTitle")}</div>
             <div className="muted">{syncDescription}</div>
+            <p className="field-hint">{t('settings.syncScope')}</p>
+            <p className="muted">{syncState.lastConfirmedAt
+              ? <>{t('settings.syncLastVerified')} <time dateTime={new Date(syncState.lastConfirmedAt).toISOString()}>{new Intl.DateTimeFormat(lang, { dateStyle: 'medium', timeStyle: 'short' }).format(syncState.lastConfirmedAt)}</time></>
+              : t('settings.syncNotVerified')}</p>
             {syncState.error && <div role="alert">{translateStatus(t, syncState.error)}</div>}
 
           </div>

@@ -21,6 +21,11 @@ export function parseSyncPayload(value:unknown):SettingsSyncPayload{
  if(value.savedMessages.some(item=>!record(item)||typeof item.id!=='string'||!item.id||('updatedAt' in item&&!timestamp(item.updatedAt))))fail();
  return {version:1,settingsPrefs:prefs,savedMessages:value.savedMessages as SettingsSyncPayload['savedMessages'],updatedAt:value.updatedAt};
 }
+/** This historical signing text is an encryption protocol, not branding copy. */
+export function syncKeyMessage(address: string) {
+ if (typeof address !== 'string' || !/^0x[a-fA-F0-9]{40}$/.test(address)) return fail();
+ return `Chirpy: enable encrypted sync\nAddress: ${address}\nThis is a gas-free signature used only to derive your sync key.`;
+}
 export async function decryptSettingsPayload(blob:EncryptedSyncBlobSnapshot,key:CryptoKey,address:string):Promise<SettingsSyncPayload>{
  try{
   if(!record(blob)||!exact(blob,['version','algorithm','kdf','address','iv','ciphertext','updatedAt'])||blob.version!==1||blob.algorithm!=='AES-GCM'||blob.kdf!=='HKDF-SHA-256'||typeof blob.address!=='string'||blob.address.toLowerCase()!==address.toLowerCase()||!timestamp(blob.updatedAt))fail();

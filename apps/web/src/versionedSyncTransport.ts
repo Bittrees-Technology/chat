@@ -23,13 +23,22 @@ const addressKey = (address: string) => {
   return address.toLowerCase();
 };
 export class VersionedSyncError extends Error {
-  constructor(readonly reason: 'unreadable' | 'stale' | 'unconfirmed' | 'authorization') {
-    super(reason === 'unconfirmed' ? 'Sync was not confirmed. Keep local data and reread before retrying.' : 'Sync is paused. Existing data was preserved; refresh access before retrying.');
+  constructor(readonly reason: 'unreadable' | 'stale' | 'unconfirmed' | 'authorization' | 'downgrade') {
+    super(reason === 'downgrade' ? 'This device has newer encrypted sync data than the service returned. Sync is paused; existing data was preserved.' : reason === 'unconfirmed' ? 'Sync was not confirmed. Keep local data and reread before retrying.' : 'Sync is paused. Existing data was preserved; refresh access before retrying.');
   }
 }
 function requireSnapshot(snapshot: VersionedSyncSnapshot) {
   if (!seen.has(snapshot) || snapshot.service !== syncEndpoint().service) throw new VersionedSyncError('unreadable');
   return seen.get(snapshot)!;
+}
+/** Preserve the exact public address spelling used by the original key signature.
+ * Ethereum account comparisons remain case-insensitive; signed message bytes do not. */
+export function syncKeyAddress(snapshot: VersionedSyncSnapshot, fallbackAddress = snapshot.address): string {
+  const blob = requireSnapshot(snapshot);
+  if (addressKey(fallbackAddress) !== snapshot.address) throw new VersionedSyncError('unreadable');
+  if (blob === null) return fallbackAddress;
+  if (typeof blob.address !== 'string' || addressKey(blob.address) !== snapshot.address) throw new VersionedSyncError('unreadable');
+  return blob.address;
 }
 /** Capability checks precede decryption/application. Pass minimum2 whenever
  * local state has upgraded; an older or empty remote view must not downgrade it. */
@@ -47,8 +56,9 @@ export async function readVersionedSync(address: string, minimum: 1 | 2, ensureC
   if (endpoint.service !== syncEndpoint().service || value?.service !== endpoint.service || value?.authVersion !== 2
     || !integer(value.revision) || !integer(value.epoch) || !Array.isArray(value.payloadVersions)
     || !value.payloadVersions.includes(2) || value.payloadVersions.some((v: unknown) => !integer(v) || v < 1)
-    || ![1, 2].includes(value.minPayloadVersion) || value.minPayloadVersion < minimum
+    || ![1, 2].includes(value.minPayloadVersion)
     || (value.blob !== null && (typeof value.blob !== 'string' || !value.blob || new TextEncoder().encode(value.blob).length > 400000))) throw new VersionedSyncError('unreadable');
+  if (value.minPayloadVersion < minimum) throw new VersionedSyncError('downgrade');
   let blob: EncryptedSyncBlobSnapshot | SyncEnvelopeV2 | null;
   try {
     blob = value.blob === null ? null : JSON.parse(value.blob);
@@ -95,7 +105,9 @@ export async function writeVersionedSync(snapshot: VersionedSyncSnapshot, author
   };
   check();
   // Encryptor validates schema/encoding. Never sign a legacy or foreign envelope.
-  const blob = JSON.stringify(parseSyncEnvelopeV2(envelope, snapshot.address));
+  const checked = parseSyncEnvelopeV2(envelope, snapshot.address);
+  if (requireSnapshot(snapshot) !== null && checked.address !== syncKeyAddress(snapshot)) throw new VersionedSyncError('unreadable');
+  const blob = JSON.stringify(checked);
   if (new TextEncoder().encode(blob).length > 400000) throw new VersionedSyncError('unreadable');
   const signature = await authorization.sign(syncWriteMessage(grant, snapshot.revision, keccak256(stringToHex(blob))));
   check();

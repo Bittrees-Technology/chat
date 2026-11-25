@@ -106,9 +106,9 @@
   "settings.receiptTitle": "Read receipts (default)",
   "settings.receiptHelp": "When on, Chat sends read receipts in direct chats. Turn off to stop sending receipts from this device. Previously sent receipts cannot be withdrawn.",
   "settings.receiptLabel": "Read receipts default",
-  "settings.syncTitle": "Sync across devices",
-  "settings.syncActive": "On for this browser session, for up to 24 hours. Encrypted preferences are stored by the sync service.",
-  "settings.syncPaused": "Paused after restart. Re-enable with your wallet to resume encrypted sync.",
+  "settings.syncTitle": "Sync preferences",
+  "settings.syncActive": "On for this browser session, for up to 24 hours. Reloading pauses sync. Encrypted preferences are stored by the sync service.",
+  "settings.syncPaused": "Paused after reload or restart. Re-enable with your wallet to resume encrypted sync.",
   "settings.syncOff": "Off. Preferences stay on this device. Enable with two gas-free signatures; the device key stays in memory.",
   "settings.signing": "Signing...",
   "settings.turnOff": "Turn off",
@@ -964,5 +964,9 @@
   "settings.publicIdentity": "Public name and linked wallets",
   "settings.technicalDetails": "Technical details and address lookup",
   "settings.administrationLink": "Project administration and roles",
-  "settings.connection": "Connection"
+  "settings.connection": "Connection",
+  "settings.syncScope": "Synchronizes read-receipt choices and older blocked/saved items. Conversation history, local contacts, notes and optional-section choices are separate.",
+  "settings.syncLastVerified": "Last verified sync:",
+  "settings.syncNotVerified": "No sync verified in this browser session.",
+  "settings.syncFormatMismatch": "This device has newer encrypted sync data than the service returned. Sync is paused; existing data was preserved."
 }

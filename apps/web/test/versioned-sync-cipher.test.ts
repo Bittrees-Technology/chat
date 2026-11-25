@@ -37,3 +37,11 @@ it('rejects a wire envelope exceeding the actual API byte limit instead of retur
   // Near the plaintext limit, the envelope and authentication tag push the wire representation over400000bytes.
   await expect(encrypt(payload,secret,address)).rejects.toThrow();
 });
+
+it('retains the public signing-address spelling while authenticating the same Ethereum owner',async()=>{
+  const secret=await key(),mixedCase='0x'+ 'Aa'.repeat(20),payload=source();
+  const blob=await encrypt(payload,secret,mixedCase);
+  expect(blob.address).toBe(mixedCase);
+  expect(syncPayloadVersion(JSON.stringify(blob),address)).toBe(2);
+  expect(await decrypt(blob,secret,address)).toEqual(payload);
+});

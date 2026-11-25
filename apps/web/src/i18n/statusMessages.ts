@@ -1,5 +1,6 @@
 // Translate known application messages; preserve unknown provider diagnostics verbatim.
 const keys: Record<string, string> = {
+  "This device has newer encrypted sync data than the service returned. Sync is paused; existing data was preserved.": "settings.syncFormatMismatch",
   "Wallet changed. Reconnect the selected wallet before enabling messaging.": "status.messagingWalletChanged",
   "Unable to confirm the saved messaging installation.": "status.messagingRegistrationUncertain",
   "The saved messaging installation is unavailable. Check its recovery status before trying again.": "status.messagingInstallationUnavailable",

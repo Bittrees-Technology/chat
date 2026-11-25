@@ -5,6 +5,7 @@ import { upgradeSyncPayloadV1 } from '../../src/versionedSync';
 export function versionedSyncMock(original: any, mocks: any) {
   const snapshot = (blob: any) => ({ address: mocks.address, epoch: 0, blob, minimum: blob?.payloadVersion === 2 ? 2 : 1 });
   return { ...original,
+    syncKeyAddress: (value: any, fallback?: string) => value.blob?.address ?? fallback ?? value.address,
     readVersionedSync: async (_address: string, minimum: number, guard: () => void) => {
       guard(); const result = snapshot(await mocks.pull()); guard();
       if (result.minimum < minimum) throw new original.VersionedSyncError('unreadable');
