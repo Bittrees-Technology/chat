@@ -42,3 +42,12 @@ export function parseSyncStorage(legacyRaw, upgradedRaw, wallet) {
   if (legacy.minPayloadVersion !== 1) throw Error('Unexpected legacy sync format');
   return legacy;
 }
+
+/** Recognized public key-signing address only. Unknown legacy bytes stay opaque. */
+export function syncSigningAddress(blob, wallet) {
+  try {
+    const value = JSON.parse(blob);
+    return record(value) && value.version === 1 && value.algorithm === 'AES-GCM' && value.kdf === 'HKDF-SHA-256'
+      && address(value.address) && value.address.toLowerCase() === wallet.toLowerCase() ? value.address : null;
+  } catch { return null; }
+}
