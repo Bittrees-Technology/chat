@@ -73,6 +73,7 @@ test.describe('Linked public display identity @xmtp', () => {
       await publish(c,'');
       expect(choices.get(linkedWallet)?.inboxId).toBe(choices.get(ownerWallet.toLowerCase())?.inboxId);
       await a.locator('.nav-item',{hasText:'Settings'}).click();
+      await a.getByText('Public name and linked wallets',{exact:true}).click();
       await b.evaluate(()=>window.dispatchEvent(new Event('chat:display-wallet-changed')));
       await expect(author).toHaveAttribute('title',ownerWallet.toLowerCase(),{timeout:120_000});
       await publish(a,linkedWallet); await b.evaluate(()=>window.dispatchEvent(new Event('chat:display-wallet-changed')));
