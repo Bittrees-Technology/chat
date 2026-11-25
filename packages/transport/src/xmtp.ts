@@ -447,7 +447,7 @@ export class XmtpTransport implements Transport {
   }
 
   async init(): Promise<void> {
-    if (!this.provider || !ETH_ADDRESS.test(this.myAddress)) {
+    if (!ETH_ADDRESS.test(this.myAddress)) {
       this.status = "idle";
       return;
     }
@@ -464,32 +464,47 @@ export class XmtpTransport implements Transport {
       return;
     }
 
+    let candidate: XmtpClient | null = null;
     try {
       const sdk = await this.loadSdk();
-      const client = await sdk.Client.build(
+      const client = candidate = await sdk.Client.build(
         await this.identifier(),
         xmtpOptions(sdk) as Parameters<typeof sdk.Client.build>[1],
       );
+      // Shared sign-in can resume the local installation without a wallet signer.
+      // A fresh/unregistered local database is not an enabled messaging session.
+      if (await client.isRegistered() !== true) {
+        client.close();
+        this.status = "idle";
+        return;
+      }
       sharedXmtp = { address: this.myAddress, client };
       await this.adopt(client);
     } catch {
+      // Keep a verified shared client for an explicit retry after inbox failure,
+      // but release a candidate whose registration could not be established.
+      if (candidate && sharedXmtp?.client !== candidate) candidate.close();
       this.client = null;
       this.status = "idle";
     }
   }
 
   async enable(opts?: { revokeStale?: boolean }): Promise<void> {
-    if (!this.provider) throw new Error("Connect a wallet to enable XMTP.");
+    const provider = this.provider;
     const sdk = await this.loadSdk();
     this.status = "enabling";
     try {
       // A failed automatic resume can be a temporary network/storage error.
       // Reopen the saved installation first rather than registering another one.
       // An uncertain lookup must not turn into a new authorization request.
-      if (!opts?.revokeStale && wasEnabled(this.myAddress)) {
+      // The convenience flag is not the database: it may be missing after a
+      // migration or interrupted enablement. Always try signer-free resume first.
+      if (!opts?.revokeStale) {
         const checkWallet = async () => {
-          const accounts = await this.provider!.request({ method: "eth_accounts" });
-          if (!Array.isArray(accounts) || typeof accounts[0] !== "string"
+          if (this.provider !== provider) throw new Error("Wallet changed. Reconnect the selected wallet before enabling messaging.");
+          if (!provider) return;
+          const accounts = await provider.request({ method: "eth_accounts" });
+          if (this.provider !== provider || !Array.isArray(accounts) || typeof accounts[0] !== "string"
             || accounts[0].toLowerCase() !== this.myAddress) {
             throw new Error("Wallet changed. Reconnect the selected wallet before enabling messaging.");
           }
@@ -513,6 +528,7 @@ export class XmtpTransport implements Transport {
             if (this.client !== existing) throw new Error("The saved messaging installation is unavailable. Check its recovery status before trying again.");
             await checkWallet();
             sharedXmtp = { address: this.myAddress, client: existing };
+            markEnabled(this.myAddress);
             adopted = true;
             return;
           }
@@ -526,9 +542,17 @@ export class XmtpTransport implements Transport {
       }
       // Recovery path: if the inbox is at XMTP's 10-installation limit, revoke the
       // existing installations (one wallet signature) so a fresh one can register.
+      if (!provider) throw new Error("Connect a wallet to enable XMTP.");
       if (opts?.revokeStale) await this.revokeStaleInstallations(sdk);
+      else {
+        // Do not ask for a registration signature that the known-full inbox
+        // cannot accept. A failed metadata lookup is uncertainty, not permission.
+        const devices = await this.inspectMessagingDevices();
+        if (devices.installations.length >= 10) throw new Error("Messaging installation limit reached.");
+      }
+      if (this.provider !== provider) throw new Error("Wallet changed. Reconnect the selected wallet before enabling messaging.");
       const client = await sdk.Client.create(
-        makeInjectedSigner(this.provider, this.myAddress, sdk.IdentifierKind.Ethereum),
+        makeInjectedSigner(provider, this.myAddress, sdk.IdentifierKind.Ethereum),
         xmtpOptions(sdk) as Parameters<typeof sdk.Client.create>[1],
       );
       sharedXmtp = { address: this.myAddress, client };

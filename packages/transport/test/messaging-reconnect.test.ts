@@ -21,7 +21,8 @@ async function setup() {
   const sdk = { IdentifierKind: { Ethereum: 0 }, LogLevel: { Off: 0 }, Client: {
     build: vi.fn(async () => existing), create: vi.fn(async () => created),
   } };
-  Object.assign(transport, { loadSdk: async () => sdk, listConversations: vi.fn(async () => []) });
+  Object.assign(transport, { loadSdk: async () => sdk, listConversations: vi.fn(async () => []),
+    inspectMessagingDevices: vi.fn(async () => ({ inboxId: null, localInstallationId: null, installations: [] })) });
   return { transport, provider, existing, created, sdk };
 }
 it('reconnects a saved registered installation without registration or wallet signing', async () => {
@@ -84,7 +85,9 @@ it('keeps first-time enablement explicit when no saved installation was enabled'
   const f = await setup(); localStorage.removeItem('chirpy.xmtp.ready.' + wallet);
   await f.transport.init(); expect(f.sdk.Client.build).not.toHaveBeenCalled();
   expect(f.sdk.Client.create).not.toHaveBeenCalled();
-  await f.transport.enable(); expect(f.sdk.Client.create).toHaveBeenCalledOnce();
+  f.existing.isRegistered.mockResolvedValue(false);
+  await f.transport.enable(); expect(f.sdk.Client.build).toHaveBeenCalledOnce();
+  expect(f.sdk.Client.create).toHaveBeenCalledOnce();
 });
 
 it('does not retain a client when the wallet changes during inbox loading', async () => {
@@ -138,4 +141,47 @@ it('does not reuse a cached failed candidate on a later explicit reconnect', asy
   expect(f.existing.close).toHaveBeenCalledOnce();
   await f.transport.enable();
   expect(f.sdk.Client.build).toHaveBeenCalledTimes(2); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+});
+
+it('recovers a registered database when its convenience flag is missing without signing or registration', async () => {
+  const f = await setup(); localStorage.removeItem('chirpy.xmtp.ready.' + wallet);
+  await f.transport.enable();
+  expect(f.sdk.Client.build).toHaveBeenCalledOnce(); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+  expect(localStorage.getItem('chirpy.xmtp.ready.' + wallet)).toBe('1');
+  expect(f.transport.status).toBe('ready');
+});
+it('resumes an enabled saved installation through shared sign-in without an injected wallet', async () => {
+  const f = await setup(); Object.assign(f.transport, { provider: null });
+  await f.transport.init();
+  expect(f.transport.status).toBe('ready'); expect(f.sdk.Client.build).toHaveBeenCalledOnce();
+  expect(f.sdk.Client.create).not.toHaveBeenCalled(); expect(f.provider.request).not.toHaveBeenCalled();
+});
+it('explicitly resumes a saved installation without a wallet extension or convenience flag', async () => {
+  const f = await setup(); Object.assign(f.transport, { provider: null }); localStorage.removeItem('chirpy.xmtp.ready.' + wallet);
+  await f.transport.enable(); expect(f.transport.status).toBe('ready');
+  expect(f.sdk.Client.create).not.toHaveBeenCalled(); expect(f.provider.request).not.toHaveBeenCalled();
+});
+it('never registers a new installation through shared sign-in alone', async () => {
+  const f = await setup(); Object.assign(f.transport, { provider: null }); f.existing.isRegistered.mockResolvedValue(false);
+  await expect(f.transport.enable()).rejects.toThrow('Connect a wallet');
+  expect(f.existing.close).toHaveBeenCalledOnce(); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+});
+it('does not adopt a new or uncertain local installation during automatic resume', async () => {
+  const f = await setup(); f.existing.isRegistered.mockResolvedValue(undefined as any);
+  await f.transport.init(); expect(f.transport.status).toBe('idle');
+  expect(f.existing.close).toHaveBeenCalledOnce(); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+});
+it('checks the device cap before requesting a new registration signature', async () => {
+  const f = await setup(); f.existing.isRegistered.mockResolvedValue(false);
+  const inspect = vi.fn(async () => ({ inboxId: 'ab'.repeat(32), localInstallationId: null, installations: Array(10).fill({ id: 'cd'.repeat(32) }) }));
+  Object.assign(f.transport, { inspectMessagingDevices: inspect });
+  await expect(f.transport.enable()).rejects.toMatchObject({ code: 'installation_limit' });
+  expect(inspect).toHaveBeenCalledOnce(); expect(f.sdk.Client.create).not.toHaveBeenCalled();
+  expect(f.provider.request.mock.calls.every(([args]) => args.method === 'eth_accounts')).toBe(true);
+});
+it('holds an uncertain device inventory before registration', async () => {
+  const f = await setup(); f.existing.isRegistered.mockResolvedValue(false);
+  Object.assign(f.transport, { inspectMessagingDevices: vi.fn(async () => { throw new Error('Device lookup unavailable'); }) });
+  await expect(f.transport.enable()).rejects.toThrow('Device lookup unavailable');
+  expect(f.sdk.Client.create).not.toHaveBeenCalled();
 });

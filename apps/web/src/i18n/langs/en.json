@@ -909,7 +909,7 @@
   "settings.devicesNoInbox": "No registered messaging inbox was found for this wallet.",
   "settings.devicesCount": "Registered devices: {count}",
   "settings.devicesDates": "Creation dates come from device clocks and do not show last activity. Keep devices with your message history available before changing access.",
-  "settings.devicesLocalUnknown": "This browser could not be identified in this check.",
+  "settings.devicesLocalUnknown": "Messaging is not open in this browser, so this check cannot identify its device. Enable messaging to try reopening the saved session. This result does not mean your history was deleted.",
   "settings.devicesLocalMissing": "This browser’s installation is not in the registered list.",
   "settings.devicesEmpty": "No devices are registered to this inbox.",
   "settings.deviceNumber": "Device {count}",
