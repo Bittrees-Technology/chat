@@ -916,5 +916,15 @@
   "settings.deviceThisBrowser": "Este navegador",
   "settings.deviceCreated": "Creado:",
   "settings.deviceDateUnknown": "Fecha no disponible",
-  "settings.deviceId": "Identificador del dispositivo"
+  "settings.deviceId": "Identificador del dispositivo",
+  "settings.devicesReview": "Revisar dispositivos de mensajería",
+  "settings.devicesLimitHelp": "Tu bandeja de mensajería ya tiene 10 sesiones registradas. Revisa los dispositivos y mantén conectado cualquiera que conserve tu historial.",
+  "settings.deviceRemovalHelp": "Para liberar espacio, elige un dispositivo que sepas que ya no necesitas. Chat no puede saber cuál conserva tus mensajes anteriores. No puedes retirar aquí el dispositivo de mensajería abierto actualmente.",
+  "settings.deviceRemoveReview": "Revisar retirada",
+  "settings.deviceRemoveTitle": "Retirar un dispositivo de mensajería",
+  "settings.deviceRemoveEffect": "Esto finaliza el acceso solo para el identificador siguiente y requiere una firma de la cartera. No restaura ni transfiere su historial. Mantén conectados los otros dispositivos hasta verificar tu historial.",
+  "settings.deviceRemoveAcknowledge": "He comprobado que este dispositivo se puede retirar y he conservado cualquiera que contenga mi historial.",
+  "settings.deviceRemoveConfirm": "Firmar para retirar este dispositivo",
+  "settings.deviceRemoved": "Se ha retirado el dispositivo seleccionado. Revisa la lista actualizada y activa la mensajería cuando quieras. No se ha registrado ninguna sesión nueva.",
+  "settings.deviceRemovalUnconfirmed": "No se pudo confirmar la retirada. Actualiza los dispositivos antes de continuar. No se ha registrado ninguna sesión nueva."
 }

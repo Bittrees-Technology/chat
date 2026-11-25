@@ -96,6 +96,8 @@ export interface Transport {
   inspectMessaging?(conversationId?: string): Promise<MessagingDiagnostics>;
   /** Explicit public metadata lookup; never opens a client or signs/revokes. */
   inspectMessagingDevices?(): Promise<MessagingDevices>;
+  /** Remove exactly one explicitly selected installation; never enables messaging. */
+  revokeMessagingDevice?(installationId: string): Promise<void>;
   /** Recover a selected skipped invitation in the current installation, without resending. */
   recoverMissingConversation?(conversationId: string, invitationId: string): Promise<void>;
   getDisplayWalletContext?(): Promise<DisplayWalletContext>;
