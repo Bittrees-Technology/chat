@@ -54,3 +54,13 @@ it('distinguishes an absent network inbox from a known local installation missin
     expect(f.host.textContent).toContain('not in the registered list'); expect(f.host.textContent).not.toContain('No registered messaging inbox');
   } finally { await act(async () => f.root.unmount()); }
 });
+
+it('explains an unopened local session without declaring its history lost', async () => {
+  const f = mount(vi.fn(async () => ({ inboxId: 'cd'.repeat(32), localInstallationId: null, installations: Array.from({ length: 10 }, (_, i) => ({ id: i.toString(16).padStart(64, '0'), createdAtMs: null })) })));
+  try {
+    await act(async () => f.render()); await act(async () => f.host.querySelector('button')!.click());
+    expect(f.host.textContent).toContain('Registered devices: 10');
+    expect(f.host.textContent).toContain('try reopening the saved session');
+    expect(f.host.textContent).toContain('does not mean your history was deleted');
+  } finally { await act(async () => f.root.unmount()); }
+});
